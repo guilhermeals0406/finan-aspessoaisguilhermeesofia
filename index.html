@@ -1628,26 +1628,28 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
             };
 
             const valorNum = parseFloat(getTag('TRNAMT').replace(',', '.'));
+            
+            // FILTRO NOVO: Ignora qualquer valor positivo (Receitas / Pagamentos de Fatura)
+            if (isNaN(valorNum) || valorNum >= 0) continue;
+
             const dtposted = getTag('DTPOSTED');
             const memo = getTag('MEMO') || getTag('NAME') || 'Compra no Cartão';
 
-            if (!isNaN(valorNum) && valorNum !== 0) {
-                let dataFormatada = new Date().toISOString();
-                if (dtposted && dtposted.length >= 8) {
-                    const y = dtposted.substring(0, 4);
-                    const m = dtposted.substring(4, 6);
-                    const d = dtposted.substring(6, 8);
-                    dataFormatada = new Date(`${y}-${m}-${d}T12:00:00Z`).toISOString();
-                }
-
-                transacoes.push({
-                    descricao: memo,
-                    valor: Math.abs(valorNum),
-                    tipo: valorNum < 0 ? 'despesa_variavel' : 'receita',
-                    categoria: detectarCategoriaAutomatica(memo),
-                    data: dataFormatada
-                });
+            let dataFormatada = new Date().toISOString();
+            if (dtposted && dtposted.length >= 8) {
+                const y = dtposted.substring(0, 4);
+                const m = dtposted.substring(4, 6);
+                const d = dtposted.substring(6, 8);
+                dataFormatada = new Date(`${y}-${m}-${d}T12:00:00Z`).toISOString();
             }
+
+            transacoes.push({
+                descricao: memo,
+                valor: Math.abs(valorNum),
+                tipo: 'despesa_variavel', // Forçado como despesa
+                categoria: detectarCategoriaAutomatica(memo),
+                data: dataFormatada
+            });
         }
         return transacoes;
     }
@@ -1667,7 +1669,12 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
             if (cols.length < 2) continue;
 
             const desc = idxTitulo !== -1 ? cols[idxTitulo] : cols[1];
-            const valorNum = parseFloat((cols[idxValor] || '').replace('R$', '').replace(/\s/g, '').replace(',', '.'));
+            
+            // FILTRO NOVO: Ignorar pagamentos e recebimentos no CSV
+            const descLower = desc.toLowerCase();
+            if (descLower.includes('pagamento') || descLower.includes('recebido')) continue;
+
+            let valorNum = parseFloat((cols[idxValor] || '').replace('R$', '').replace(/\s/g, '').replace(',', '.'));
             if (isNaN(valorNum) || valorNum === 0) continue;
 
             transacoes.push({
@@ -1774,6 +1781,7 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
                 const dataItemDia = (item.data || '').slice(0, 10);
                 const descItemNorm = (item.descricao || '').trim().toLowerCase();
 
+                // CONCILIAÇÃO: Verifica se já existe o mesmo valor, dia e descrição na conta
                 const jaExiste = dadosNuvem.some(existente => {
                     const dataExDia = (existente.data || '').slice(0, 10);
                     const descExNorm = (existente.descricao || '').trim().toLowerCase();
@@ -1783,7 +1791,7 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
 
                 if (jaExiste) {
                     duplicados++;
-                    continue;
+                    continue; // Pula este item pois já foi lançado
                 }
 
                 const docRef = db.collection("transacoes").doc();
@@ -1809,10 +1817,12 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
             }
 
             fecharModalImportacao();
+            
+            // Exibe resultado mostrando o que foi salvo e o que foi ignorado
             if (duplicados > 0) {
-                showToast(`${contador} novos importados (${duplicados} duplicados ignorados)!`);
+                showToast(`${contador} novos salvos (${duplicados} repetidos ignorados)!`);
             } else {
-                showToast(`${contador} gastos importados com sucesso!`);
+                showToast(`${contador} novos gastos importados!`);
             }
             abrirContaEspecifica(contaDestino);
         } catch (error) {
