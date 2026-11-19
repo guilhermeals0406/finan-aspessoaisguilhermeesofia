@@ -196,6 +196,9 @@
                 <i class="fa-solid fa-credit-card text-2xl"></i>
             </div>
         </div>
+        <button onclick="apagarTodosDadosCartao()" id="btn-limpar-cartao-rapido" class="mt-3 w-full bg-white/15 hover:bg-rose-500/90 text-white border border-white/25 font-bold py-2.5 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95">
+            <i class="fa-solid fa-trash-can"></i> Apagar Todos os Dados do Cartão
+        </button>
     </div>
 
     <h3 class="font-bold text-[11px] text-slate-400 mb-3 uppercase tracking-widest">Divisão por Categorias</h3>
@@ -411,12 +414,16 @@
                 <i class="fa-solid fa-trash-can"></i>
             </div>
             <div>
-                <h3 class="font-black text-slate-800 text-base">Limpar Despesas</h3>
+                <h3 class="font-black text-slate-800 text-base">Limpar Dados & Contas</h3>
                 <p class="text-xs text-slate-400">Apague lançamentos antes de reimportar extratos.</p>
             </div>
         </div>
 
         <div class="space-y-2.5">
+            <button onclick="apagarTodosDadosCartao()" class="w-full bg-rose-500 hover:bg-rose-600 text-white font-bold p-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 active:scale-95 transition-all shadow-sm">
+                <i class="fa-solid fa-credit-card"></i> Apagar Todos os Dados do Cartão
+            </button>
+
             <div class="flex gap-2">
                 <select id="select-limpar-conta" class="w-2/3 bg-slate-50 border border-slate-200/80 rounded-2xl px-3 py-3 font-semibold text-xs text-slate-700 outline-none">
                     <option value="Cartão de Crédito">💳 Cartão de Crédito</option>
@@ -428,7 +435,7 @@
                 </button>
             </div>
 
-            <button onclick="limparRegistros('despesas')" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold p-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 active:scale-95 transition-all shadow-sm">
+            <button onclick="limparRegistros('despesas')" class="w-full bg-rose-700 hover:bg-rose-800 text-white font-bold p-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 active:scale-95 transition-all shadow-sm">
                 <i class="fa-solid fa-broom"></i> Apagar Todas as Despesas (Manter Receitas)
             </button>
 
@@ -1374,20 +1381,24 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
         });
 
         const cardHeader = document.getElementById('card-header-conta');
+        const btnLimparCartao = document.getElementById('btn-limpar-cartao-rapido');
         document.getElementById('valor-resumo-conta').innerText = formatarReal(totalGastoConta);
 
         if (contaAtivaDetalhe === 'Cartão de Crédito') {
             cardHeader.className = "bg-gradient-to-br from-sky-500 to-sky-600 text-white p-6 rounded-[2rem] shadow-lg shadow-sky-200 mb-5 relative overflow-hidden";
             document.getElementById('titulo-resumo-conta').innerText = "Fatura Aberta do Cartão";
             document.getElementById('icone-resumo-conta').innerHTML = `<i class="fa-solid fa-credit-card text-2xl"></i>`;
+            if (btnLimparCartao) btnLimparCartao.classList.remove('hide');
         } else if (contaAtivaDetalhe === 'Conta Corrente') {
             cardHeader.className = "bg-gradient-to-br from-indigo-500 to-indigo-600 text-white p-6 rounded-[2rem] shadow-lg shadow-indigo-200 mb-5 relative overflow-hidden";
             document.getElementById('titulo-resumo-conta').innerText = "Débitos em Conta Corrente";
             document.getElementById('icone-resumo-conta').innerHTML = `<i class="fa-solid fa-building-columns text-2xl"></i>`;
+            if (btnLimparCartao) btnLimparCartao.classList.add('hide');
         } else {
             cardHeader.className = "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white p-6 rounded-[2rem] shadow-lg shadow-emerald-200 mb-5 relative overflow-hidden";
             document.getElementById('titulo-resumo-conta').innerText = "Gastos em Pix e Dinheiro";
             document.getElementById('icone-resumo-conta').innerHTML = `<i class="fa-solid fa-money-bill-wave text-2xl"></i>`;
+            if (btnLimparCartao) btnLimparCartao.classList.add('hide');
         }
 
         const containerCat = document.getElementById('categorias-conta-selecionada');
@@ -1606,7 +1617,7 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
                 return;
             }
             if (itensParaImportar.length === 0) {
-                alert("Nenhuma transação encontrada no arquivo.");
+                alert("Nenhuma despesa encontrada no arquivo.");
                 return;
             }
             exibirPreviaImportacao();
@@ -1628,8 +1639,6 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
             };
 
             const valorNum = parseFloat(getTag('TRNAMT').replace(',', '.'));
-            
-            // FILTRO NOVO: Ignora qualquer valor positivo (Receitas / Pagamentos de Fatura)
             if (isNaN(valorNum) || valorNum >= 0) continue;
 
             const dtposted = getTag('DTPOSTED');
@@ -1646,7 +1655,7 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
             transacoes.push({
                 descricao: memo,
                 valor: Math.abs(valorNum),
-                tipo: 'despesa_variavel', // Forçado como despesa
+                tipo: 'despesa_variavel',
                 categoria: detectarCategoriaAutomatica(memo),
                 data: dataFormatada
             });
@@ -1669,8 +1678,6 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
             if (cols.length < 2) continue;
 
             const desc = idxTitulo !== -1 ? cols[idxTitulo] : cols[1];
-            
-            // FILTRO NOVO: Ignorar pagamentos e recebimentos no CSV
             const descLower = desc.toLowerCase();
             if (descLower.includes('pagamento') || descLower.includes('recebido')) continue;
 
@@ -1716,6 +1723,42 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
         document.getElementById('preview-total-itens').innerText = `${itensParaImportar.length} transações`;
         document.getElementById('preview-total-valor').innerText = formatarReal(totalSoma);
     }
+
+    window.apagarTodosDadosCartao = async function() {
+        const alvo = dadosNuvem.filter(t => t.conta === 'Cartão de Crédito');
+
+        if (alvo.length === 0) {
+            alert("Não há nenhum dado registrado no Cartão de Crédito para apagar.");
+            return;
+        }
+
+        if (!confirm(`Tem certeza que deseja apagar TODOS os ${alvo.length} lançamento(s) do Cartão de Crédito?`)) {
+            return;
+        }
+
+        showToast("Apagando dados do cartão...", "fa-spinner fa-spin");
+
+        try {
+            let batch = db.batch();
+            let contador = 0;
+
+            for (const item of alvo) {
+                const docRef = db.collection("transacoes").doc(item.id);
+                batch.delete(docRef);
+                contador++;
+                if (contador % 450 === 0) {
+                    await batch.commit();
+                    batch = db.batch();
+                }
+            }
+
+            await batch.commit();
+            showToast(`Todos os ${contador} dados do cartão foram apagados!`, "fa-trash");
+        } catch (error) {
+            console.error("Erro ao apagar dados do cartão:", error);
+            alert("Erro ao apagar os dados do cartão. Verifique sua conexão.");
+        }
+    };
 
     window.limparRegistros = async function(modo) {
         let alvo = [];
@@ -1781,7 +1824,6 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
                 const dataItemDia = (item.data || '').slice(0, 10);
                 const descItemNorm = (item.descricao || '').trim().toLowerCase();
 
-                // CONCILIAÇÃO: Verifica se já existe o mesmo valor, dia e descrição na conta
                 const jaExiste = dadosNuvem.some(existente => {
                     const dataExDia = (existente.data || '').slice(0, 10);
                     const descExNorm = (existente.descricao || '').trim().toLowerCase();
@@ -1791,7 +1833,7 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
 
                 if (jaExiste) {
                     duplicados++;
-                    continue; // Pula este item pois já foi lançado
+                    continue;
                 }
 
                 const docRef = db.collection("transacoes").doc();
@@ -1818,7 +1860,6 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
 
             fecharModalImportacao();
             
-            // Exibe resultado mostrando o que foi salvo e o que foi ignorado
             if (duplicados > 0) {
                 showToast(`${contador} novos salvos (${duplicados} repetidos ignorados)!`);
             } else {
