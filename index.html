@@ -1,49 +1,1680 @@
-window.limparRegistros = async function(modo) {
-        let alvo = [];
-        let mensagemConfirmacao = "";
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#f8fafc">
+    <title>Finanças Guilherme & Sofia</title>
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3135/3135715.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            overscroll-behavior-y: none;
+        }
+        .hide { display: none !important; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+        .fade-in { animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        .progress-fill { transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1); }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 pb-36 select-none">
 
-        if (modo === 'conta') {
-            const contaAlvo = document.getElementById('select-limpar-conta').value;
-            alvo = dadosNuvem.filter(t => t.conta === contaAlvo && t.tipo !== 'receita');
-            mensagemConfirmacao = `Apagar permanentemente ${alvo.length} despesa(s) de "${contaAlvo}"?`;
-        } else if (modo === 'despesas') {
-            alvo = dadosNuvem.filter(t => t.tipo !== 'receita');
-            mensagemConfirmacao = `Apagar todas as ${alvo.length} despesas (mantendo apenas as receitas)?`;
-        } else if (modo === 'tudo') {
-            alvo = [...dadosNuvem];
-            mensagemConfirmacao = `ATENÇÃO: Isso vai apagar TODOS os ${alvo.length} registros (despesas e receitas). Deseja continuar?`;
+<!-- Toast -->
+<div id="toast" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 backdrop-blur-md text-white px-5 py-2.5 rounded-full text-xs font-semibold shadow-2xl flex items-center gap-2.5 transition-all duration-300 opacity-0 pointer-events-none -translate-y-2">
+    <i id="toast-icon" class="fa-solid fa-circle-check text-sky-400"></i>
+    <span id="toast-msg">Notificação</span>
+</div>
+
+<!-- Cabeçalho -->
+<header class="bg-slate-50/90 backdrop-blur-md px-5 pt-8 pb-3 flex justify-between items-center sticky top-0 z-30 border-b border-slate-100">
+    <div>
+        <h1 class="text-2xl font-black text-slate-800 tracking-tight">Finanças</h1>
+        <p class="text-[10px] font-extrabold text-sky-500 uppercase tracking-widest mt-0.5" id="saudacao">Visão: Casal</p>
+    </div>
+    <div class="flex items-center gap-2">
+        <button onclick="alternarOuPedirPermissaoNotificacoes()" id="btn-header-notificacao" class="bg-white text-slate-500 hover:text-sky-600 w-8 h-8 rounded-full flex items-center justify-center border border-slate-200/90 shadow-sm transition-all relative active:scale-95" title="Notificações">
+            <i class="fa-solid fa-bell text-xs"></i>
+            <span id="badge-notificacao" class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white"></span>
+        </button>
+        <select id="userSelect" class="bg-white text-slate-700 text-xs font-bold border border-slate-200/90 shadow-sm rounded-full px-3.5 py-1.5 outline-none cursor-pointer" onchange="mudarUsuario()">
+            <option value="Ambos">Casal (Todos)</option>
+            <option value="Guilherme">Guilherme</option>
+            <option value="Sofia">Sofia</option>
+        </select>
+    </div>
+</header>
+
+<!-- ABA 1: INÍCIO -->
+<main class="px-5 max-w-lg mx-auto fade-in mt-4" id="aba-inicio">
+    <div class="bg-gradient-to-r from-sky-500 to-indigo-600 p-4 rounded-3xl text-white shadow-lg mb-5">
+        <div class="flex justify-between items-center mb-2">
+            <span class="text-xs font-extrabold flex items-center gap-1.5 tracking-wider uppercase">
+                <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i> Gemini IA Rápido
+            </span>
+            <button onclick="document.getElementById('input-foto-ia').click()" class="bg-white/20 hover:bg-white/30 text-[10px] font-bold py-1 px-2.5 rounded-full flex items-center gap-1 transition-all">
+                <i class="fa-solid fa-camera"></i> Ler Cupom
+            </button>
+            <input type="file" id="input-foto-ia" accept="image/*" class="hide" onchange="processarFotoComIA(event)">
+        </div>
+        <div class="flex gap-1.5 items-center">
+            <input type="text" id="ia-prompt-text" onkeydown="if(event.key === 'Enter') processarTextoComIA()" placeholder="Ex: Gastei 45 no almoço no débito (Gui)" class="w-full bg-white/10 placeholder-sky-100/70 border border-white/20 rounded-2xl px-3.5 py-2.5 text-xs text-white outline-none focus:bg-white/20">
+            <button onclick="iniciarDitadoVoz()" id="btn-ia-mic" class="bg-white/20 hover:bg-white/30 text-white w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 active:scale-95 transition-all" title="Falar por voz">
+                <i class="fa-solid fa-microphone text-xs"></i>
+            </button>
+            <button onclick="processarTextoComIA()" id="btn-ia-text" class="bg-white text-sky-600 font-bold w-9 h-9 rounded-2xl text-xs flex items-center justify-center shrink-0 active:scale-95 transition-all shadow" title="Enviar">
+                <i class="fa-solid fa-arrow-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-800 text-white p-6 rounded-[2rem] shadow-xl shadow-slate-300/40 mb-5 relative overflow-hidden">
+        <div class="absolute -top-6 -right-6 p-4 opacity-5 pointer-events-none">
+            <i class="fa-solid fa-vault text-9xl"></i>
+        </div>
+        <p class="text-[10px] tracking-widest text-slate-400 font-bold mb-1 uppercase">Saldo Disponível (Geral)</p>
+        <h2 class="text-4xl font-black mb-1.5 tracking-tight" id="saldo-total">R$ 0,00</h2>
+        <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-700/60 text-xs">
+            <span class="text-slate-400">Base de Dados</span>
+            <div class="flex items-center gap-1.5" id="status-conexao">
+                <span class="relative flex h-2 w-2">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span class="text-[10px] text-slate-300 font-bold uppercase tracking-wider">Sincronizado</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-emerald-50/90 border border-emerald-100 p-4 rounded-2xl flex justify-between items-center mb-3">
+        <div class="flex items-center gap-3">
+            <div class="bg-emerald-100 text-emerald-600 w-10 h-10 rounded-xl flex items-center justify-center shadow-sm">
+                <i class="fa-solid fa-arrow-trend-up text-base"></i>
+            </div>
+            <div>
+                <span class="font-bold text-slate-700 text-sm">Receitas</span>
+                <p class="text-[10px] text-slate-400">Entradas acumuladas</p>
+            </div>
+        </div>
+        <span class="font-black text-emerald-600 text-xl tracking-tight" id="total-receitas">R$ 0,00</span>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 mb-6">
+        <div class="bg-white border border-slate-100 p-4 rounded-2xl shadow-sm">
+            <div class="flex items-center gap-2 mb-2">
+                <div class="bg-rose-50 text-rose-500 w-8 h-8 rounded-lg flex items-center justify-center"><i class="fa-solid fa-thumbtack text-xs"></i></div>
+                <p class="text-[11px] font-bold text-slate-500 uppercase">Fixas</p>
+            </div>
+            <p class="font-black text-rose-600 text-lg tracking-tight" id="total-fixas">R$ 0,00</p>
+        </div>
+        <div class="bg-white border border-slate-100 p-4 rounded-2xl shadow-sm">
+            <div class="flex items-center gap-2 mb-2">
+                <div class="bg-amber-50 text-amber-500 w-8 h-8 rounded-lg flex items-center justify-center"><i class="fa-solid fa-bolt text-xs"></i></div>
+                <p class="text-[11px] font-bold text-slate-500 uppercase">Variáveis</p>
+            </div>
+            <p class="font-black text-amber-600 text-lg tracking-tight" id="total-variaveis">R$ 0,00</p>
+        </div>
+    </div>
+
+    <div class="mb-6">
+        <div class="flex justify-between items-center mb-3">
+            <h3 class="font-black text-slate-700 text-base">Meios de Pagamento</h3>
+            <button onclick="mudarAba('contas')" class="text-[10px] font-bold text-sky-600 bg-sky-50 px-3 py-1.5 rounded-full uppercase tracking-wider active:bg-sky-100 transition-colors">Ver Faturas</button>
+        </div>
+        <div class="flex gap-3 overflow-x-auto pb-2 snap-x hide-scrollbar">
+            <div onclick="abrirContaEspecifica('Cartão de Crédito')" class="snap-start min-w-[135px] bg-white border border-slate-100 p-4 rounded-2xl shadow-sm cursor-pointer active:scale-95 transition-all">
+                <div class="bg-sky-50 text-sky-500 w-9 h-9 rounded-xl flex items-center justify-center mb-2">
+                    <i class="fa-solid fa-credit-card text-sm"></i>
+                </div>
+                <p class="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Cartão</p>
+                <p class="font-black text-slate-700 text-base tracking-tight" id="card-total-cartao">R$ 0,00</p>
+            </div>
+            <div onclick="abrirContaEspecifica('Conta Corrente')" class="snap-start min-w-[135px] bg-white border border-slate-100 p-4 rounded-2xl shadow-sm cursor-pointer active:scale-95 transition-all">
+                <div class="bg-indigo-50 text-indigo-500 w-9 h-9 rounded-xl flex items-center justify-center mb-2">
+                    <i class="fa-solid fa-building-columns text-sm"></i>
+                </div>
+                <p class="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Débito</p>
+                <p class="font-black text-slate-700 text-base tracking-tight" id="card-total-conta">R$ 0,00</p>
+            </div>
+            <div onclick="abrirContaEspecifica('Pix / Dinheiro')" class="snap-start min-w-[135px] bg-white border border-slate-100 p-4 rounded-2xl shadow-sm cursor-pointer active:scale-95 transition-all">
+                <div class="bg-emerald-50 text-emerald-500 w-9 h-9 rounded-xl flex items-center justify-center mb-2">
+                    <i class="fa-solid fa-money-bill-wave text-sm"></i>
+                </div>
+                <p class="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Pix / Dinheiro</p>
+                <p class="font-black text-slate-700 text-base tracking-tight" id="card-total-pix">R$ 0,00</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex justify-between items-center mb-3">
+        <h3 class="font-black text-slate-700 text-base">Histórico Recente</h3>
+        <span class="text-xs font-bold text-slate-400" id="contagem-itens">0 itens</span>
+    </div>
+    <div id="lista-transacoes" class="space-y-3 mb-8">
+        <div class="text-center p-8 text-slate-400 text-xs font-semibold"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Sincronizando...</div>
+    </div>
+</main>
+
+<!-- ABA 2: CONTAS & EXTRATOS -->
+<main class="px-5 pt-3 max-w-lg mx-auto hide fade-in" id="aba-contas">
+    <div class="flex justify-between items-center mb-1">
+        <h2 class="text-2xl font-black text-slate-700">Contas & Extratos</h2>
+        <button onclick="abrirModalImportacao()" class="bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all">
+            <i class="fa-solid fa-file-arrow-up"></i> Importar Extrato
+        </button>
+    </div>
+    <p class="text-xs text-slate-400 mb-4">Selecione para editar descrições ou importe a fatura do Nubank.</p>
+
+    <div class="grid grid-cols-3 gap-2 bg-slate-200/70 p-1.5 rounded-2xl mb-5">
+        <button onclick="selecionarContaAba('Cartão de Crédito')" id="tab-btn-cartao" class="py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all bg-white text-slate-800 shadow-sm">
+            <i class="fa-solid fa-credit-card"></i> Cartão
+        </button>
+        <button onclick="selecionarContaAba('Conta Corrente')" id="tab-btn-conta" class="py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all text-slate-500">
+            <i class="fa-solid fa-building-columns"></i> Débito
+        </button>
+        <button onclick="selecionarContaAba('Pix / Dinheiro')" id="tab-btn-pix" class="py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all text-slate-500">
+            <i class="fa-solid fa-money-bill-wave"></i> Pix
+        </button>
+    </div>
+
+    <div id="card-header-conta" class="bg-gradient-to-br from-sky-500 to-sky-600 text-white p-6 rounded-[2rem] shadow-lg shadow-sky-200 mb-5 relative overflow-hidden">
+        <div class="flex justify-between items-start mb-2 relative z-10">
+            <div>
+                <p class="text-[10px] text-sky-100 uppercase font-bold tracking-widest mb-1" id="titulo-resumo-conta">Fatura Atual do Cartão</p>
+                <h3 class="text-4xl font-black tracking-tight" id="valor-resumo-conta">R$ 0,00</h3>
+            </div>
+            <div class="bg-white/20 backdrop-blur-sm p-3.5 rounded-2xl" id="icone-resumo-conta">
+                <i class="fa-solid fa-credit-card text-2xl"></i>
+            </div>
+        </div>
+    </div>
+
+    <h3 class="font-bold text-[11px] text-slate-400 mb-3 uppercase tracking-widest">Divisão por Categorias</h3>
+    <div id="categorias-conta-selecionada" class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 space-y-4 mb-6"></div>
+
+    <div class="flex justify-between items-center mb-3">
+        <h3 class="font-bold text-[11px] text-slate-400 uppercase tracking-widest">Despesas Lançadas nesta Conta</h3>
+        <span class="text-xs font-bold text-slate-400" id="contagem-conta-selecionada">0 itens</span>
+    </div>
+    <div id="lista-transacoes-conta-selecionada" class="space-y-3 mb-8"></div>
+</main>
+
+<!-- ABA 3: RELATÓRIOS DE GESTÃO -->
+<main class="px-5 pt-3 max-w-lg mx-auto hide fade-in" id="aba-relatorios">
+    <div class="flex justify-between items-center mb-1">
+        <h2 class="text-2xl font-black text-slate-700">Relatórios</h2>
+        <input type="month" id="filtro-mes-relatorio" onchange="renderizarRelatorios()" class="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none shadow-sm">
+    </div>
+    <p class="text-xs text-slate-400 mb-5">Indicadores mensais, taxa de economia e parcelas comprometidas.</p>
+
+    <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+            <p class="text-[10px] font-bold text-slate-400 uppercase">Receitas no Mês</p>
+            <h3 class="text-lg font-black text-emerald-600 mt-1" id="rel-receitas-mes">R$ 0,00</h3>
+        </div>
+        <div class="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+            <p class="text-[10px] font-bold text-slate-400 uppercase">Despesas no Mês</p>
+            <h3 class="text-lg font-black text-rose-600 mt-1" id="rel-despesas-mes">R$ 0,00</h3>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 mb-5">
+        <div class="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+            <p class="text-[10px] font-bold text-slate-400 uppercase">Taxa de Economia</p>
+            <h3 class="text-2xl font-black text-emerald-600 mt-1" id="rel-taxa-poupanca">0%</h3>
+            <p class="text-[10px] text-slate-400 mt-0.5">Meta ideal: acima de 20%</p>
+        </div>
+        <div class="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+            <p class="text-[10px] font-bold text-slate-400 uppercase">Parcelas no Mês</p>
+            <h3 class="text-2xl font-black text-sky-600 mt-1" id="rel-total-parcelas">R$ 0,00</h3>
+            <p class="text-[10px] text-slate-400 mt-0.5">Comprometido no cartão</p>
+        </div>
+    </div>
+
+    <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm mb-5">
+        <h3 class="font-bold text-xs text-slate-500 uppercase tracking-wider mb-3">Despesas por Pessoa no Mês</h3>
+        <div class="space-y-3" id="rel-comparativo-casal"></div>
+    </div>
+
+    <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm mb-8">
+        <h3 class="font-bold text-xs text-slate-500 uppercase tracking-wider mb-3">Onde o dinheiro foi gasto</h3>
+        <div class="space-y-3" id="rel-ranking-categorias"></div>
+    </div>
+</main>
+
+<!-- ABA 4: METAS & CONSULTOR IA -->
+<main class="px-5 pt-3 max-w-lg mx-auto hide fade-in" id="aba-projetos">
+    <h2 class="text-2xl font-black text-slate-700 mb-1">Nossas Metas & IA</h2>
+    <p class="text-xs text-slate-400 mb-5">Metas do casal e diagnóstico inteligente enviado no WhatsApp.</p>
+    
+    <div class="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-6 rounded-3xl shadow-xl mb-6 relative overflow-hidden">
+        <div class="flex justify-between items-center mb-3">
+            <span class="text-xs font-bold tracking-wider uppercase text-sky-300 flex items-center gap-2">
+                <i class="fa-solid fa-brain"></i> Consultor Gemini
+            </span>
+            <button onclick="gerarDiagnosticoFinanceiroIA()" id="btn-gerar-ia" class="bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs py-1.5 px-3 rounded-full flex items-center gap-1.5 shadow active:scale-95 transition-all">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Analisar Finanças
+            </button>
+        </div>
+        <p class="text-xs text-slate-300 mb-3" id="ia-analise-status">Toque no botão para o Gemini analisar suas finanças e liberar o envio no WhatsApp.</p>
+        <div id="ia-analise-resultado" class="hide bg-slate-800/80 p-4 rounded-2xl text-xs text-slate-200 leading-relaxed border border-slate-700/60 max-h-72 overflow-y-auto space-y-2"></div>
+        <button onclick="enviarRelatorioWhatsApp()" id="btn-wpp-ia" class="hide w-full mt-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all">
+            <i class="fa-brands fa-whatsapp text-base"></i> Encaminhar Relatório no WhatsApp
+        </button>
+    </div>
+
+    <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 mb-4">
+        <div class="flex justify-between items-center mb-3">
+            <h3 class="font-bold text-base text-slate-700 flex items-center gap-3">
+                <div class="bg-sky-50 text-sky-500 w-9 h-9 rounded-xl flex items-center justify-center"><i class="fa-solid fa-house text-sm"></i></div> Imóvel Próprio
+            </h3>
+            <span class="text-xs font-black text-sky-600 bg-sky-50 px-3 py-1.5 rounded-full">30%</span>
+        </div>
+        <div class="w-full bg-slate-100 rounded-full h-2.5 mb-2 overflow-hidden">
+            <div class="bg-sky-500 h-2.5 rounded-full progress-fill w-0" id="progresso-imovel" data-width="30%"></div>
+        </div>
+        <p class="text-[10px] font-bold text-slate-400 text-right uppercase tracking-wider">R$ 30.000 de R$ 100.000</p>
+    </div>
+
+    <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+        <div class="flex justify-between items-center mb-3">
+            <h3 class="font-bold text-base text-slate-700 flex items-center gap-3">
+                <div class="bg-emerald-50 text-emerald-500 w-9 h-9 rounded-xl flex items-center justify-center"><i class="fa-solid fa-plane text-sm"></i></div> Viagem de Férias
+            </h3>
+            <span class="text-xs font-black text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full">65%</span>
+        </div>
+        <div class="w-full bg-slate-100 rounded-full h-2.5 mb-2 overflow-hidden">
+            <div class="bg-emerald-500 h-2.5 rounded-full progress-fill w-0" id="progresso-viagem" data-width="65%"></div>
+        </div>
+        <p class="text-[10px] font-bold text-slate-400 text-right uppercase tracking-wider">R$ 6.500 de R$ 10.000</p>
+    </div>
+</main>
+
+<!-- ABA 5: AJUSTES -->
+<main class="px-5 pt-3 max-w-lg mx-auto hide fade-in" id="aba-ajustes">
+    <h2 class="text-2xl font-black text-slate-700 mb-1">Ajustes & Sistema</h2>
+    <p class="text-xs text-slate-400 mb-5">WhatsApp, chave Google Gemini, notificações e backup.</p>
+
+    <!-- WhatsApp para Relatórios -->
+    <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm mb-5">
+        <div class="flex items-center gap-3 mb-3">
+            <div class="bg-emerald-50 text-emerald-600 w-12 h-12 rounded-2xl flex items-center justify-center text-xl">
+                <i class="fa-brands fa-whatsapp"></i>
+            </div>
+            <div>
+                <h3 class="font-black text-slate-800 text-base">WhatsApp para Relatórios</h3>
+                <p class="text-xs text-slate-400">DDI + DDD + Número (Ex: 5511999999999)</p>
+            </div>
+        </div>
+        <div class="flex gap-2">
+            <input type="tel" id="wpp-numero" placeholder="5511999999999" class="w-full bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-xs font-semibold outline-none focus:border-emerald-500">
+            <button onclick="salvarWhatsApp()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 rounded-xl text-xs active:scale-95 transition-all shadow">Salvar</button>
+        </div>
+    </div>
+
+    <!-- Chave Google Gemini -->
+    <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm mb-5">
+        <div class="flex items-center gap-3 mb-3">
+            <div class="bg-indigo-50 text-indigo-600 w-12 h-12 rounded-2xl flex items-center justify-center text-xl">
+                <i class="fa-solid fa-key"></i>
+            </div>
+            <div>
+                <h3 class="font-black text-slate-800 text-base">Chave Google Gemini</h3>
+                <p class="text-xs text-slate-400">Otimizada com contingência automática (PT-BR)</p>
+            </div>
+        </div>
+        <div class="space-y-2">
+            <input type="password" id="gemini-api-key" placeholder="Cole sua chave AIzaSy..." class="w-full bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-xs font-semibold outline-none focus:border-indigo-500">
+            <button onclick="salvarChaveGemini()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold p-3 rounded-xl text-xs active:scale-95 transition-all shadow">
+                Salvar Chave no Celular
+            </button>
+        </div>
+    </div>
+
+    <!-- Notificações -->
+    <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm mb-5">
+        <div class="flex items-center gap-3 mb-3">
+            <div class="bg-amber-50 text-amber-500 w-12 h-12 rounded-2xl flex items-center justify-center text-xl">
+                <i class="fa-solid fa-bell"></i>
+            </div>
+            <div>
+                <h3 class="font-black text-slate-800 text-base">Notificações do Aparelho</h3>
+                <p class="text-xs text-slate-400" id="txt-status-notificacao">Desativadas no momento.</p>
+            </div>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="alternarOuPedirPermissaoNotificacoes()" id="btn-ativar-notif-painel" class="w-1/2 bg-amber-500 hover:bg-amber-600 text-white font-bold p-3 rounded-xl text-xs active:scale-95 transition-all shadow">
+                Ativar Notificações
+            </button>
+            <button onclick="testarNotificacaoNativa()" class="w-1/2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold p-3 rounded-xl text-xs active:scale-95 transition-all">
+                Enviar Teste
+            </button>
+        </div>
+    </div>
+
+    <!-- Importação de Extrato -->
+    <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm mb-5">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="bg-sky-50 text-sky-600 w-12 h-12 rounded-2xl flex items-center justify-center text-xl">
+                <i class="fa-solid fa-file-invoice-dollar"></i>
+            </div>
+            <div>
+                <h3 class="font-black text-slate-800 text-base">Extrato Bancário</h3>
+                <p class="text-xs text-slate-400">Importe a fatura (.OFX ou .CSV) do Nubank.</p>
+            </div>
+        </div>
+        <button onclick="abrirModalImportacao()" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold p-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md">
+            <i class="fa-solid fa-upload text-sm"></i> Importar Fatura / Extrato
+        </button>
+    </div>
+
+    <!-- Backup -->
+    <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm mb-5">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="bg-slate-100 text-slate-700 w-12 h-12 rounded-2xl flex items-center justify-center text-xl">
+                <i class="fa-solid fa-shield-halved"></i>
+            </div>
+            <div>
+                <h3 class="font-black text-slate-800 text-base">Cópia de Segurança</h3>
+                <p class="text-xs text-slate-400">Exporte ou importe os seus registros.</p>
+            </div>
+        </div>
+        <div class="space-y-2.5">
+            <button onclick="exportarBackupJSON()" class="w-full bg-slate-900 hover:bg-black text-white font-bold p-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md">
+                <i class="fa-solid fa-cloud-arrow-down text-sm text-sky-400"></i> Fazer Backup Completo (.JSON)
+            </button>
+            <button onclick="exportarPlanilhaCSV()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold p-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 active:scale-95 transition-all">
+                <i class="fa-solid fa-file-excel text-sm text-emerald-600"></i> Exportar para Excel (.CSV)
+            </button>
+            <div class="pt-2 border-t border-slate-100">
+                <label for="input-backup" class="w-full bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-bold p-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all">
+                    <i class="fa-solid fa-cloud-arrow-up text-sm"></i> Restaurar Dados (.JSON)
+                </label>
+                <input type="file" id="input-backup" accept=".json" class="hide" onchange="restaurarBackupJSON(event)">
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- MODAL: EDIÇÃO / NOVO LANÇAMENTO COM PARCELAMENTO -->
+<div id="modal-add" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hide flex items-end justify-center transition-all duration-300" style="opacity: 0;">
+    <div class="bg-white w-full max-w-lg rounded-t-[2.5rem] p-6 pt-7 shadow-2xl max-h-[92vh] overflow-y-auto transform translate-y-full transition-transform duration-300" id="modal-content">
+        <div class="flex justify-between items-center mb-5">
+            <h3 class="text-xl font-black text-slate-800" id="modal-title">Novo Lançamento</h3>
+            <button onclick="fecharModal()" class="bg-slate-100 text-slate-500 hover:text-slate-800 w-9 h-9 rounded-full flex items-center justify-center transition-colors">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+        
+        <form id="form-transacao" onsubmit="salvarOuEditarTransacao(event)">
+            <input type="hidden" id="edit-id">
+            
+            <div class="mb-3.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Descrição</label>
+                <input type="text" id="desc" class="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 text-slate-700 font-semibold focus:border-sky-500 outline-none" required placeholder="Ex: Tênis, Geladeira, Posto Ipiranga...">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 mb-3.5">
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Valor Total (R$)</label>
+                    <input type="number" id="valor" step="0.01" class="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 font-black text-slate-800 focus:border-sky-500 outline-none" required placeholder="0.00">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tipo</label>
+                    <select id="tipo" onchange="atualizarVisibilidadeParcelas()" class="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 font-semibold text-slate-700 focus:border-sky-500 outline-none cursor-pointer">
+                        <option value="despesa_variavel">Variável (-)</option>
+                        <option value="despesa_fixa">Fixa (-)</option>
+                        <option value="receita">Receita (+)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 mb-3.5">
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Meio de Pagamento</label>
+                    <select id="conta" class="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 font-semibold text-slate-700 focus:border-sky-500 outline-none cursor-pointer">
+                        <option value="Cartão de Crédito">💳 Cartão</option>
+                        <option value="Conta Corrente">🏦 Débito</option>
+                        <option value="Pix / Dinheiro">⚡ Pix / Dinheiro</option>
+                    </select>
+                </div>
+                <div id="grupo-parcelas">
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Parcelamento</label>
+                    <select id="parcelas" class="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 font-semibold text-slate-700 focus:border-sky-500 outline-none cursor-pointer">
+                        <option value="1">À vista (1x)</option>
+                        <option value="2">2x sem juros</option>
+                        <option value="3">3x sem juros</option>
+                        <option value="4">4x sem juros</option>
+                        <option value="5">5x sem juros</option>
+                        <option value="6">6x sem juros</option>
+                        <option value="7">7x sem juros</option>
+                        <option value="8">8x sem juros</option>
+                        <option value="9">9x sem juros</option>
+                        <option value="10">10x sem juros</option>
+                        <option value="11">11x sem juros</option>
+                        <option value="12">12x sem juros</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mb-3.5">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Categoria</label>
+                <select id="categoria" class="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 font-semibold text-slate-700 focus:border-sky-500 outline-none cursor-pointer">
+                    <option value="Combustível">⛽ Combustível</option>
+                    <option value="Alimentação">🛒 Supermercado & Feira</option>
+                    <option value="Restaurante / Lazer">🍔 Restaurante / Lazer</option>
+                    <option value="Moradia">🏠 Moradia & Contas de Casa</option>
+                    <option value="Saúde">💊 Saúde & Farmácia</option>
+                    <option value="Salário">💼 Salário / Renda</option>
+                    <option value="Outros">📦 Outros</option>
+                </select>
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Quem Pagou?</label>
+                <select id="autor" class="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 font-semibold text-slate-700 focus:border-sky-500 outline-none cursor-pointer">
+                    <option value="Guilherme">Guilherme</option>
+                    <option value="Sofia">Sofia</option>
+                </select>
+            </div>
+
+            <button type="submit" id="btn-submit" class="w-full bg-slate-900 hover:bg-black text-white font-bold rounded-2xl p-4 shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2">
+                <i class="fa-solid fa-check"></i> Salvar
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL DE IMPORTAÇÃO -->
+<div id="modal-import" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hide flex items-end justify-center transition-all duration-300" style="opacity: 0;">
+    <div class="bg-white w-full max-w-lg rounded-t-[2.5rem] p-6 pt-7 shadow-2xl max-h-[92vh] overflow-y-auto transform translate-y-full transition-transform duration-300" id="modal-import-content">
+        <div class="flex justify-between items-center mb-4">
+            <div>
+                <h3 class="text-xl font-black text-slate-800">Importar Extrato</h3>
+                <p class="text-xs text-slate-400">Nubank (.OFX ou .CSV)</p>
+            </div>
+            <button onclick="fecharModalImportacao()" class="bg-slate-100 text-slate-500 hover:text-slate-800 w-9 h-9 rounded-full flex items-center justify-center transition-colors">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <div id="step-upload" class="space-y-4">
+            <div class="border-2 border-dashed border-sky-300 bg-sky-50/50 rounded-3xl p-6 text-center cursor-pointer hover:bg-sky-50 transition-colors" onclick="document.getElementById('input-extrato').click()">
+                <i class="fa-solid fa-file-invoice text-4xl text-sky-500 mb-2"></i>
+                <h4 class="font-bold text-slate-700 text-sm">Selecione o arquivo .OFX ou .CSV</h4>
+                <p class="text-xs text-slate-400 mt-1">Toque para selecionar o arquivo exportado da aplicação do banco.</p>
+                <input type="file" id="input-extrato" accept=".ofx,.csv" class="hide" onchange="processarArquivoExtrato(event)">
+            </div>
+        </div>
+
+        <div id="step-preview" class="hide space-y-4">
+            <div class="bg-sky-50 p-4 rounded-2xl border border-sky-100 flex justify-between items-center">
+                <div><p class="text-[10px] font-bold text-sky-600 uppercase">Itens</p><h4 class="text-lg font-black text-slate-800" id="preview-total-itens">0</h4></div>
+                <div class="text-right"><p class="text-[10px] font-bold text-sky-600 uppercase">Soma</p><h4 class="text-lg font-black text-slate-800" id="preview-total-valor">R$ 0,00</h4></div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <select id="import-conta" class="w-full bg-slate-50 border border-slate-200/80 rounded-xl p-3 font-semibold text-xs text-slate-700 outline-none">
+                    <option value="Cartão de Crédito">💳 Cartão de Crédito</option>
+                    <option value="Conta Corrente">🏦 Conta Corrente / Débito</option>
+                    <option value="Pix / Dinheiro">⚡ Pix / Dinheiro</option>
+                </select>
+                <select id="import-autor" class="w-full bg-slate-50 border border-slate-200/80 rounded-xl p-3 font-semibold text-xs text-slate-700 outline-none">
+                    <option value="Guilherme">Guilherme</option>
+                    <option value="Sofia">Sofia</option>
+                </select>
+            </div>
+            <div class="max-h-56 overflow-y-auto space-y-2 border border-slate-100 rounded-2xl p-2 bg-slate-50" id="preview-lista-itens"></div>
+            <div class="flex gap-2">
+                <button onclick="cancelarImportacao()" class="w-1/3 bg-slate-100 text-slate-700 font-bold p-3.5 rounded-2xl text-xs">Voltar</button>
+                <button onclick="confirmarImportacao()" id="btn-confirmar-import" class="w-2/3 bg-sky-500 text-white font-bold p-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md"><i class="fa-solid fa-cloud-arrow-up"></i> Gravar Tudo</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- BARRA INFERIOR (6 COLUNAS) -->
+<div class="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-[0_-4px_25px_rgba(0,0,0,0.06)] pb-safe">
+    <div class="max-w-md mx-auto grid grid-cols-6 items-center h-16 px-1 relative">
+        <button onclick="mudarAba('inicio')" class="flex flex-col items-center justify-center text-sky-500 transition-colors" id="nav-inicio">
+            <i class="fa-solid fa-house text-base"></i>
+            <span class="text-[9px] font-bold mt-1">Início</span>
+        </button>
+        <button onclick="mudarAba('contas')" class="flex flex-col items-center justify-center text-slate-400 hover:text-slate-600 transition-colors" id="nav-contas">
+            <i class="fa-solid fa-credit-card text-base"></i>
+            <span class="text-[9px] font-bold mt-1">Contas</span>
+        </button>
+        <div class="flex items-center justify-center relative">
+            <button onclick="abrirModalParaNovo()" class="w-12 h-12 -mt-6 rounded-full bg-gradient-to-tr from-sky-600 to-sky-400 text-white flex items-center justify-center text-xl shadow-lg shadow-sky-500/40 border-4 border-slate-50 active:scale-90 transition-transform cursor-pointer">
+                <i class="fa-solid fa-plus"></i>
+            </button>
+        </div>
+        <button onclick="mudarAba('relatorios')" class="flex flex-col items-center justify-center text-slate-400 hover:text-slate-600 transition-colors" id="nav-relatorios">
+            <i class="fa-solid fa-chart-pie text-base"></i>
+            <span class="text-[9px] font-bold mt-1">Relatórios</span>
+        </button>
+        <button onclick="mudarAba('projetos')" class="flex flex-col items-center justify-center text-slate-400 hover:text-slate-600 transition-colors" id="nav-projetos">
+            <i class="fa-solid fa-bullseye text-base"></i>
+            <span class="text-[9px] font-bold mt-1">Metas</span>
+        </button>
+        <button onclick="mudarAba('ajustes')" class="flex flex-col items-center justify-center text-slate-400 hover:text-slate-600 transition-colors" id="nav-ajustes">
+            <i class="fa-solid fa-shield-halved text-base"></i>
+            <span class="text-[9px] font-bold mt-1">Ajustes</span>
+        </button>
+    </div>
+</div>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyAPuJVAQjGUnqPgjmyAfkwXom4j6V1I5Og",
+        authDomain: "financascasalgui.firebaseapp.com",
+        projectId: "financascasalgui",
+        storageBucket: "financascasalgui.firebasestorage.app",
+        messagingSenderId: "367010305216",
+        appId: "1:367010305216:web:23cd2b8f8b759afbeb7aa5"
+    };
+    
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+
+    let filtroUsuario = 'Ambos';
+    let contaAtivaDetalhe = 'Cartão de Crédito';
+    let dadosNuvem = [];
+    let transacaoOriginais = {};
+    let itensParaImportar = [];
+    let primeiraCarga = true;
+
+    function comprimirImagemBase64(file, maxWidth = 800, qualidade = 0.65) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > maxWidth) {
+                        height = Math.round((height * maxWidth) / width);
+                        width = maxWidth;
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', qualidade));
+                };
+                img.onerror = reject;
+            };
+            reader.onerror = reject;
+        });
+    }
+
+    function parserTextoLocal(texto) {
+        const t = texto.toLowerCase();
+        let valor = 0;
+        const matchValor = t.match(/(?:r\$\s*|reais\s*)?(\d+(?:[.,]\d{1,2})?)(?:\s*reais|\s*rs)?/);
+        if (matchValor) valor = parseFloat(matchValor[1].replace(',', '.'));
+
+        let autor = "Guilherme";
+        if (t.includes("sofia") || t.includes("sofi")) autor = "Sofia";
+
+        let conta = "Cartão de Crédito";
+        if (t.includes("debito") || t.includes("débito") || t.includes("conta")) conta = "Conta Corrente";
+        else if (t.includes("pix") || t.includes("dinheiro") || t.includes("especie")) conta = "Pix / Dinheiro";
+
+        let categoria = detectarCategoriaAutomatica(t);
+        let desc = texto
+            .replace(/(?:gastei|comprei|paguei|foi|valor|de|no|na|em|reais|r\$|\d+(?:[.,]\d+)?)/gi, '')
+            .replace(/(?:cartao|cartão|debito|débito|credito|crédito|pix|dinheiro|guilherme|gui|sofia)/gi, '')
+            .trim();
+        if (!desc || desc.length < 2) desc = texto;
+
+        return {
+            descricao: desc.charAt(0).toUpperCase() + desc.slice(1),
+            valor: valor || 0,
+            tipo: (t.includes("recebi") || t.includes("salario") || t.includes("salário")) ? "receita" : "despesa_variavel",
+            conta,
+            categoria,
+            autor
+        };
+    }
+
+    function salvarWhatsApp() {
+        const num = document.getElementById('wpp-numero').value.replace(/\D/g, '');
+        localStorage.setItem('wpp_casal', num);
+        document.getElementById('wpp-numero').value = num;
+        showToast("WhatsApp salvo com sucesso!");
+    }
+
+    function carregarWhatsApp() {
+        const num = localStorage.getItem('wpp_casal') || '';
+        const input = document.getElementById('wpp-numero');
+        if (input) input.value = num;
+        return num;
+    }
+
+    function enviarRelatorioWhatsApp() {
+        const textoAnalise = document.getElementById('ia-analise-resultado').innerText.trim();
+        if (!textoAnalise) {
+            alert("Gere a análise financeira primeiro.");
+            return;
+        }
+        const numero = carregarWhatsApp();
+        const mensagem = `*📊 Relatório Financeiro - Guilherme & Sofia*\n\n${textoAnalise}`;
+        const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
+        window.open(url, '_blank');
+    }
+
+    function salvarChaveGemini() {
+        const key = document.getElementById('gemini-api-key').value.trim();
+        if(key) {
+            localStorage.setItem('gemini_api_key_casal', key);
+            localStorage.removeItem('gemini_modelo_veloz');
+            showToast("Chave Google Gemini salva!");
+        } else {
+            alert("Insira uma chave válida iniciada com AIzaSy...");
+        }
+    }
+
+    function carregarChaveGemini() {
+        const key = localStorage.getItem('gemini_api_key_casal') || '';
+        const input = document.getElementById('gemini-api-key');
+        if(input) input.value = key;
+        return key;
+    }
+
+    async function chamarGemini(prompt, base64Imagem = null, forcarJson = true) {
+        const apiKey = carregarChaveGemini();
+        if(!apiKey) return null;
+
+        let parts = [{ text: prompt }];
+        if(base64Imagem) {
+            parts.push({
+                inlineData: { mimeType: "image/jpeg", data: base64Imagem.split(',')[1] }
+            });
         }
 
-        if (alvo.length === 0) {
-            alert("Não há registros nessa opção para apagar.");
+        const payload = {
+            systemInstruction: {
+                parts: [{ text: "Você é um assistente financeiro brasileiro. Responda EXCLUSIVAMENTE em Português do Brasil (PT-BR). Seja ultra direto, rápido e preciso." }]
+            },
+            contents: [{ parts }],
+            generationConfig: {
+                temperature: forcarJson ? 0.1 : 0.3,
+                maxOutputTokens: forcarJson ? 250 : 650,
+                ...(forcarJson ? { responseMimeType: "application/json" } : {})
+            }
+        };
+
+        const corpoRequisicao = JSON.stringify(payload);
+        const modeloCache = localStorage.getItem('gemini_modelo_veloz');
+        const candidatos = [...new Set([
+            ...(modeloCache ? [modeloCache] : []),
+            'gemini-3.8-flash',
+            'gemini-3.8-flash-lite',
+            'gemini-3.5-flash'
+        ])];
+
+        for (const modelo of candidatos) {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000);
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: corpoRequisicao,
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                const data = await res.json();
+
+                if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
+                    localStorage.setItem('gemini_modelo_veloz', modelo);
+                    return data.candidates[0].content.parts[0].text;
+                }
+                if (data.error && (data.error.code === 400 || data.error.code === 403)) {
+                    alert("Chave do Gemini inválida ou sem permissão: " + data.error.message);
+                    return null;
+                }
+            } catch (e) {}
+        }
+        return null;
+    }
+
+    function iniciarDitadoVoz() {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            alert("Seu navegador não suporta ditado por voz. Use o teclado.");
+            return;
+        }
+        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRec();
+        recognition.lang = 'pt-BR';
+        recognition.interimResults = false;
+
+        const btnMic = document.getElementById('btn-ia-mic');
+        btnMic.classList.add('bg-rose-500', 'text-white', 'animate-pulse');
+        showToast("Escutando... Fale sua despesa!", "fa-microphone");
+
+        recognition.onresult = (e) => {
+            document.getElementById('ia-prompt-text').value = e.results[0][0].transcript;
+            btnMic.classList.remove('bg-rose-500', 'text-white', 'animate-pulse');
+            processarTextoComIA();
+        };
+        recognition.onerror = () => btnMic.classList.remove('bg-rose-500', 'text-white', 'animate-pulse');
+        recognition.onend = () => btnMic.classList.remove('bg-rose-500', 'text-white', 'animate-pulse');
+        recognition.start();
+    }
+
+    async function processarTextoComIA() {
+        const input = document.getElementById('ia-prompt-text');
+        const texto = input.value.trim();
+        if(!texto) {
+            alert("Digite a despesa primeiro (ex: '45 reais no almoço no débito Gui').");
+            input.focus();
             return;
         }
 
-        if (!confirm(mensagemConfirmacao)) return;
+        const btn = document.getElementById('btn-ia-text');
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-sky-600"></i>`;
+        btn.disabled = true;
 
-        showToast("Limpando registros...", "fa-spinner fa-spin");
+        let item = null;
+        const prompt = `Extraia os dados financeiros em PT-BR desta frase do casal Guilherme e Sofia: "${texto}".
+Retorne APENAS este JSON:
+{
+  "descricao": "nome curto do gasto",
+  "valor": 0.00,
+  "tipo": "despesa_variavel" ou "despesa_fixa" ou "receita",
+  "conta": "Cartão de Crédito" ou "Conta Corrente" ou "Pix / Dinheiro",
+  "categoria": "Combustível" ou "Alimentação" ou "Restaurante / Lazer" ou "Moradia" ou "Saúde" ou "Salário" ou "Outros",
+  "autor": "Guilherme" ou "Sofia"
+}`;
+
+        const resposta = await chamarGemini(prompt, null, true);
+        if (resposta) {
+            try {
+                const match = resposta.match(/\{[\s\S]*\}/);
+                if (match) item = JSON.parse(match[0]);
+            } catch (e) {}
+        }
+
+        if (!item || !item.descricao) {
+            item = parserTextoLocal(texto);
+        }
+
+        btn.innerHTML = `<i class="fa-solid fa-arrow-right"></i>`;
+        btn.disabled = false;
+
+        await db.collection("transacoes").add({
+            descricao: item.descricao || texto,
+            valor: parseFloat(item.valor) || 0,
+            tipo: item.tipo || "despesa_variavel",
+            conta: item.conta || "Cartão de Crédito",
+            categoria: item.categoria || "Outros",
+            autor: item.autor || "Guilherme",
+            data: new Date().toISOString()
+        });
+
+        input.value = '';
+        showToast(`Registrado: ${item.descricao} - ${formatarReal(item.valor)}`);
+    }
+
+    async function processarFotoComIA(event) {
+        const file = event.target.files[0];
+        if(!file) return;
+        showToast("Comprimindo e lendo cupom...", "fa-camera");
 
         try {
-            let batch = db.batch();
-            let contador = 0;
+            const base64Comprimido = await comprimirImagemBase64(file, 800, 0.65);
+            const prompt = `Leia este cupom fiscal em português. Extraia o estabelecimento e o valor total pago.
+Retorne APENAS este JSON:
+{
+  "descricao": "Nome do Estabelecimento",
+  "valor": 0.00,
+  "tipo": "despesa_variavel",
+  "conta": "Cartão de Crédito",
+  "categoria": "Combustível" ou "Alimentação" ou "Restaurante / Lazer" ou "Moradia" ou "Saúde" ou "Outros",
+  "autor": "Guilherme"
+}`;
+            const resposta = await chamarGemini(prompt, base64Comprimido, true);
+            if(resposta) {
+                const match = resposta.match(/\{[\s\S]*\}/);
+                if(!match) throw new Error("JSON inválido");
+                const item = JSON.parse(match[0]);
 
-            for (const item of alvo) {
-                const docRef = db.collection("transacoes").doc(item.id);
-                batch.delete(docRef);
-                contador++;
-                if (contador % 450 === 0) {
-                    await batch.commit();
-                    batch = db.batch();
+                document.getElementById('desc').value = item.descricao || 'Compra';
+                document.getElementById('valor').value = parseFloat(item.valor || 0).toFixed(2);
+                document.getElementById('tipo').value = item.tipo || 'despesa_variavel';
+                document.getElementById('conta').value = item.conta || 'Cartão de Crédito';
+                document.getElementById('categoria').value = item.categoria || 'Alimentação';
+                document.getElementById('autor').value = item.autor || 'Guilherme';
+                document.getElementById('edit-id').value = '';
+                document.getElementById('parcelas').value = '1';
+                atualizarVisibilidadeParcelas();
+
+                abrirModalComDadosPreenchidos();
+                showToast("Cupom lido com sucesso!");
+            } else {
+                abrirModalParaNovo();
+                showToast("Servidores ocupados. Preencha o valor abaixo.", "fa-clock");
+            }
+        } catch (err) {
+            abrirModalParaNovo();
+            showToast("Não foi possível ler o cupom automaticamente.", "fa-circle-info");
+        } finally {
+            event.target.value = '';
+        }
+    }
+
+    async function gerarDiagnosticoFinanceiroIA() {
+        const btn = document.getElementById('btn-gerar-ia');
+        const container = document.getElementById('ia-analise-resultado');
+        const status = document.getElementById('ia-analise-status');
+        const btnWpp = document.getElementById('btn-wpp-ia');
+
+        if(dadosNuvem.length === 0) {
+            alert("Lance algumas despesas primeiro para analisar.");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Analisando...`;
+        status.innerText = "Calculando diagnóstico financeiro em português...";
+
+        let totalReceitas = 0, totalFixas = 0, totalVariaveis = 0;
+        let gastosGui = 0, gastosSofia = 0;
+        let porCategoria = {};
+
+        dadosNuvem.forEach(t => {
+            const v = parseFloat(t.valor) || 0;
+            if(t.tipo === 'receita') totalReceitas += v;
+            else {
+                if(t.tipo === 'despesa_fixa') totalFixas += v;
+                else totalVariaveis += v;
+
+                if(t.autor === 'Guilherme') gastosGui += v;
+                else gastosSofia += v;
+
+                const cat = t.categoria || 'Outros';
+                porCategoria[cat] = (porCategoria[cat] || 0) + v;
+            }
+        });
+
+        const prompt = `Responda SOMENTE em Português do Brasil (PT-BR).
+Você é o consultor financeiro pessoal do casal Guilherme e Sofia. Analise estes dados reais:
+- Receitas: R$ ${totalReceitas.toFixed(2)}
+- Despesas Fixas: R$ ${totalFixas.toFixed(2)}
+- Despesas Variáveis: R$ ${totalVariaveis.toFixed(2)}
+- Saldo Líquido: R$ ${(totalReceitas - (totalFixas + totalVariaveis)).toFixed(2)}
+- Gastos Guilherme: R$ ${gastosGui.toFixed(2)}
+- Gastos Sofia: R$ ${gastosSofia.toFixed(2)}
+- Gastos por Categoria: ${JSON.stringify(porCategoria)}
+- Meta Principal: Imóvel Próprio (R$ 30.000 acumulados de R$ 100.000).
+
+Escreva uma análise objetiva, curta e prática em 4 tópicos:
+1. Saúde Financeira Atual
+2. Principal Gargalo de Gastos
+3. Equilíbrio entre Guilherme e Sofia
+4. Ação Prática para a Meta do Imóvel`;
+
+        let resposta = await chamarGemini(prompt, null, false);
+
+        if (resposta) {
+            status.innerText = "Diagnóstico concluído pelo Google Gemini:";
+            container.innerHTML = resposta.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        } else {
+            const saldoLiq = totalReceitas - (totalFixas + totalVariaveis);
+            const maiorCat = Object.keys(porCategoria).sort((a,b) => porCategoria[b] - porCategoria[a])[0] || "Nenhuma";
+            const totalDesp = totalFixas + totalVariaveis;
+            const percGui = totalDesp > 0 ? ((gastosGui / totalDesp) * 100).toFixed(0) : 0;
+            const percSofia = totalDesp > 0 ? ((gastosSofia / totalDesp) * 100).toFixed(0) : 0;
+
+            status.innerText = "Diagnóstico consolidado (Análise Instantânea):";
+            container.innerHTML = `
+                <strong>1. Saúde Financeira Atual:</strong><br>
+                Saldo disponível de <strong>${formatarReal(saldoLiq)}</strong> (${saldoLiq >= 0 ? "orçamento positivo" : "atenção: despesas superaram receitas"}).<br><br>
+                <strong>2. Principal Gargalo de Gastos:</strong><br>
+                A categoria com maior peso é <strong>${maiorCat}</strong> (${formatarReal(porCategoria[maiorCat] || 0)}).<br><br>
+                <strong>3. Equilíbrio entre Guilherme e Sofia:</strong><br>
+                Guilherme: <strong>${formatarReal(gastosGui)}</strong> (${percGui}%) • Sofia: <strong>${formatarReal(gastosSofia)}</strong> (${percSofia}%).<br><br>
+                <strong>4. Ação Prática para o Imóvel:</strong><br>
+                Faltam <strong>R$ 70.000,00</strong> para atingir a meta. Reduzir 15% nas despesas variáveis libera ${formatarReal(totalVariaveis * 0.15)} extras por mês.
+            `;
+        }
+
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> Reanalisar`;
+        container.classList.remove('hide');
+        btnWpp.classList.remove('hide');
+    }
+
+    function abrirModalComDadosPreenchidos() {
+        const modal = document.getElementById('modal-add');
+        const content = document.getElementById('modal-content');
+        document.getElementById('modal-title').innerText = 'Confirmar Leitura Gemini';
+        document.getElementById('btn-submit').innerHTML = `<i class="fa-solid fa-check"></i> Confirmar e Salvar`;
+        modal.classList.remove('hide');
+        setTimeout(() => { modal.style.opacity = '1'; content.classList.remove('translate-y-full'); }, 10);
+    }
+
+    function atualizarStatusNotificacoesUI() {
+        const badge = document.getElementById('badge-notificacao');
+        const txtStatus = document.getElementById('txt-status-notificacao');
+        const btnPainel = document.getElementById('btn-ativar-notif-painel');
+
+        if (!("Notification" in window)) {
+            if(badge) badge.className = "hide";
+            if(txtStatus) txtStatus.innerText = "Este aparelho não suporta notificações.";
+            if(btnPainel) btnPainel.disabled = true;
+            return;
+        }
+
+        if (Notification.permission === "granted") {
+            if(badge) badge.className = "absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white";
+            if(txtStatus) txtStatus.innerText = "Notificações ativas no aparelho!";
+            if(btnPainel) {
+                btnPainel.innerText = "Notificações Ativas";
+                btnPainel.className = "w-1/2 bg-emerald-600 text-white font-bold p-3 rounded-xl text-xs shadow";
+            }
+        } else if (Notification.permission === "denied") {
+            if(badge) badge.className = "absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-white";
+            if(txtStatus) txtStatus.innerText = "Bloqueadas no navegador.";
+            if(btnPainel) {
+                btnPainel.innerText = "Bloqueadas";
+                btnPainel.className = "w-1/2 bg-slate-300 text-slate-600 font-bold p-3 rounded-xl text-xs";
+            }
+        } else {
+            if(badge) badge.className = "absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white";
+            if(txtStatus) txtStatus.innerText = "Permissão pendente. Clique para ativar.";
+            if(btnPainel) {
+                btnPainel.innerText = "Ativar Notificações";
+                btnPainel.className = "w-1/2 bg-amber-500 hover:bg-amber-600 text-white font-bold p-3 rounded-xl text-xs shadow";
+            }
+        }
+    }
+
+    function alternarOuPedirPermissaoNotificacoes() {
+        if (!("Notification" in window)) {
+            alert("Este navegador não suporta notificações de sistema.");
+            return;
+        }
+        Notification.requestPermission().then(permission => {
+            atualizarStatusNotificacoesUI();
+            if (permission === "granted") {
+                showToast("Notificações ativadas no aparelho!", "fa-bell");
+                dispararNotificacaoNativa("🔔 Notificações Ativadas!", "Será notificado quando houver novos lançamentos.");
+            }
+        });
+    }
+
+    function testarNotificacaoNativa() {
+        if (Notification.permission !== "granted") {
+            alternarOuPedirPermissaoNotificacoes();
+            return;
+        }
+        dispararNotificacaoNativa("🔔 Teste de Finanças", "As notificações estão operando perfeitamente!");
+        showToast("Notificação de teste enviada!");
+    }
+
+    function dispararNotificacaoNativa(titulo, corpo) {
+        if ("Notification" in window && Notification.permission === "granted") {
+            try {
+                new Notification(titulo, {
+                    body: corpo,
+                    icon: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
+                    badge: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
+                    vibrate: [200, 100, 200]
+                });
+            } catch (e) {
+                new Notification(titulo, { body: corpo });
+            }
+        }
+    }
+
+    function showToast(mensagem, icone = 'fa-circle-check') {
+        const toast = document.getElementById('toast');
+        document.getElementById('toast-msg').innerText = mensagem;
+        document.getElementById('toast-icon').className = `fa-solid ${icone} text-sky-400`;
+        toast.classList.remove('opacity-0', '-translate-y-2');
+        toast.classList.add('opacity-100', 'translate-y-0');
+        setTimeout(() => {
+            toast.classList.remove('opacity-100', 'translate-y-0');
+            toast.classList.add('opacity-0', '-translate-y-2');
+        }, 2800);
+    }
+
+    function mudarUsuario() {
+        filtroUsuario = document.getElementById('userSelect').value;
+        document.getElementById('saudacao').innerText = filtroUsuario === 'Ambos' ? 'Visão: Casal' : `Visão: ${filtroUsuario}`;
+        renderizarTudo();
+    }
+
+    function mudarAba(aba) {
+        ['inicio', 'contas', 'relatorios', 'projetos', 'ajustes'].forEach(a => {
+            const el = document.getElementById(`aba-${a}`);
+            if (el) el.classList.add('hide');
+            const nav = document.getElementById(`nav-${a}`);
+            if (nav) {
+                nav.classList.remove('text-sky-500');
+                nav.classList.add('text-slate-400');
+            }
+        });
+        const target = document.getElementById(`aba-${aba}`);
+        if (target) target.classList.remove('hide');
+        const activeNav = document.getElementById(`nav-${aba}`);
+        if (activeNav) {
+            activeNav.classList.remove('text-slate-400');
+            activeNav.classList.add('text-sky-500');
+        }
+        if (aba === 'relatorios') renderizarRelatorios();
+        if (aba === 'ajustes') {
+            carregarChaveGemini();
+            carregarWhatsApp();
+            atualizarStatusNotificacoesUI();
+        }
+        if (aba === 'projetos') {
+            setTimeout(() => {
+                const elImovel = document.getElementById('progresso-imovel');
+                const elViagem = document.getElementById('progresso-viagem');
+                if (elImovel) elImovel.style.width = elImovel.getAttribute('data-width');
+                if (elViagem) elViagem.style.width = elViagem.getAttribute('data-width');
+            }, 60);
+        }
+    }
+
+    function abrirContaEspecifica(nomeConta) {
+        contaAtivaDetalhe = nomeConta;
+        mudarAba('contas');
+        selecionarContaAba(nomeConta);
+    }
+
+    function selecionarContaAba(nomeConta) {
+        contaAtivaDetalhe = nomeConta;
+        const btnCartao = document.getElementById('tab-btn-cartao');
+        const btnConta = document.getElementById('tab-btn-conta');
+        const btnPix = document.getElementById('tab-btn-pix');
+
+        [btnCartao, btnConta, btnPix].forEach(b => {
+            b.className = "py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all text-slate-500";
+        });
+
+        if (nomeConta === 'Cartão de Crédito') btnCartao.className = "py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all bg-white text-slate-800 shadow-sm";
+        else if (nomeConta === 'Conta Corrente') btnConta.className = "py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all bg-white text-slate-800 shadow-sm";
+        else btnPix.className = "py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all bg-white text-slate-800 shadow-sm";
+
+        renderizarAbaContasDetalhada();
+    }
+
+    function atualizarVisibilidadeParcelas() {
+        const idEdicao = document.getElementById('edit-id').value;
+        const tipo = document.getElementById('tipo').value;
+        const grupo = document.getElementById('grupo-parcelas');
+        if (!grupo) return;
+        if (idEdicao || tipo === 'receita') {
+            grupo.classList.add('hide');
+        } else {
+            grupo.classList.remove('hide');
+        }
+    }
+
+    function abrirModalParaNovo() {
+        document.getElementById('form-transacao').reset();
+        document.getElementById('edit-id').value = '';
+        document.getElementById('parcelas').value = '1';
+        atualizarVisibilidadeParcelas();
+        document.getElementById('modal-title').innerText = 'Novo Lançamento';
+        document.getElementById('btn-submit').innerHTML = `<i class="fa-solid fa-check"></i> Salvar`;
+
+        const modal = document.getElementById('modal-add');
+        const content = document.getElementById('modal-content');
+        modal.classList.remove('hide');
+        setTimeout(() => { modal.style.opacity = '1'; content.classList.remove('translate-y-full'); }, 10);
+    }
+
+    function abrirModalParaEditar(id) {
+        const item = transacaoOriginais[id];
+        if(!item) return;
+
+        document.getElementById('edit-id').value = id;
+        document.getElementById('desc').value = item.descricao;
+        document.getElementById('valor').value = parseFloat(item.valor).toFixed(2);
+        document.getElementById('tipo').value = item.tipo;
+        document.getElementById('conta').value = item.conta;
+        document.getElementById('categoria').value = item.categoria;
+        document.getElementById('autor').value = item.autor;
+        atualizarVisibilidadeParcelas();
+
+        document.getElementById('modal-title').innerText = 'Editar Despesa';
+        document.getElementById('btn-submit').innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Salvar Alterações`;
+
+        const modal = document.getElementById('modal-add');
+        const content = document.getElementById('modal-content');
+        modal.classList.remove('hide');
+        setTimeout(() => { modal.style.opacity = '1'; content.classList.remove('translate-y-full'); }, 10);
+    }
+
+    function fecharModal() {
+        const modal = document.getElementById('modal-add');
+        const content = document.getElementById('modal-content');
+        modal.style.opacity = '0';
+        content.classList.add('translate-y-full');
+        setTimeout(() => { modal.classList.add('hide'); document.getElementById('form-transacao').reset(); }, 220);
+    }
+
+    function abrirModalImportacao() {
+        const modal = document.getElementById('modal-import');
+        const content = document.getElementById('modal-import-content');
+        cancelarImportacao();
+        modal.classList.remove('hide');
+        setTimeout(() => { modal.style.opacity = '1'; content.classList.remove('translate-y-full'); }, 10);
+    }
+
+    function fecharModalImportacao() {
+        const modal = document.getElementById('modal-import');
+        const content = document.getElementById('modal-import-content');
+        modal.style.opacity = '0';
+        content.classList.add('translate-y-full');
+        setTimeout(() => { modal.classList.add('hide'); cancelarImportacao(); }, 220);
+    }
+
+    function cancelarImportacao() {
+        document.getElementById('step-upload').classList.remove('hide');
+        document.getElementById('step-preview').classList.add('hide');
+        document.getElementById('input-extrato').value = '';
+        itensParaImportar = [];
+    }
+
+    const formatarReal = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    function formatarDataInteligente(isoData) {
+        const data = new Date(isoData);
+        const hoje = new Date();
+        const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1);
+        if (data.toDateString() === hoje.toDateString()) return "Hoje";
+        if (data.toDateString() === ontem.toDateString()) return "Ontem";
+        return data.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+    }
+
+    function getCategoriaIcone(cat) {
+        switch(cat) {
+            case 'Combustível': return { icon: 'fa-gas-pump', cor: 'text-amber-500 bg-amber-50' };
+            case 'Alimentação': return { icon: 'fa-cart-shopping', cor: 'text-emerald-500 bg-emerald-50' };
+            case 'Restaurante / Lazer': return { icon: 'fa-utensils', cor: 'text-rose-500 bg-rose-50' };
+            case 'Moradia': return { icon: 'fa-house-chimney', cor: 'text-indigo-500 bg-indigo-50' };
+            case 'Saúde': return { icon: 'fa-heart-pulse', cor: 'text-red-500 bg-red-50' };
+            case 'Salário': return { icon: 'fa-sack-dollar', cor: 'text-emerald-500 bg-emerald-50' };
+            default: return { icon: 'fa-tag', cor: 'text-slate-500 bg-slate-100' };
+        }
+    }
+
+    function detectarCategoriaAutomatica(texto) {
+        const t = (texto || '').toLowerCase();
+        if (t.includes('posto') || t.includes('combustivel') || t.includes('gasolina') || t.includes('ipiranga') || t.includes('shell') || t.includes('uber') || t.includes('99app')) return 'Combustível';
+        if (t.includes('supermercado') || t.includes('mercado') || t.includes('carrefour') || t.includes('extra') || t.includes('pao de acucar') || t.includes('hortifruti') || t.includes('feira') || t.includes('padaria')) return 'Alimentação';
+        if (t.includes('restaurante') || t.includes('ifood') || t.includes('mcdonald') || t.includes('burger') || t.includes('bar') || t.includes('lanchonete') || t.includes('churrascaria')) return 'Restaurante / Lazer';
+        if (t.includes('farmacia') || t.includes('drogaria') || t.includes('droga') || t.includes('hospital') || t.includes('consulta') || t.includes('medico') || t.includes('dentista') || t.includes('exame')) return 'Saúde';
+        if (t.includes('enel') || t.includes('cpfl') || t.includes('sabesp') || t.includes('sanepar') || t.includes('aluguel') || t.includes('condominio') || t.includes('claro') || t.includes('vivo') || t.includes('internet')) return 'Moradia';
+        if (t.includes('salario') || t.includes('ted recebida') || t.includes('rendimento')) return 'Salário';
+        return 'Outros';
+    }
+
+    db.collection("transacoes").orderBy("data", "desc").onSnapshot((snapshot) => {
+        if (!primeiraCarga) {
+            snapshot.docChanges().forEach(change => {
+                if (change.type === "added") {
+                    const item = change.doc.data();
+                    const autor = item.autor || "Casal";
+                    const desc = item.descricao || "Nova despesa";
+                    const valorStr = formatarReal(parseFloat(item.valor) || 0);
+                    dispararNotificacaoNativa(
+                        `💸 Gasto registrado por ${autor}!`,
+                        `${desc}: ${valorStr} no ${item.conta || 'Cartão'}`
+                    );
                 }
+            });
+        }
+        primeiraCarga = false;
+
+        dadosNuvem = [];
+        transacaoOriginais = {};
+        snapshot.forEach((doc) => {
+            const docData = { id: doc.id, ...doc.data() };
+            dadosNuvem.push(docData);
+            transacaoOriginais[doc.id] = docData;
+        });
+
+        try {
+            localStorage.setItem('backup_financas_casal', JSON.stringify(dadosNuvem));
+        } catch (e) {}
+
+        renderizarTudo();
+    });
+
+    function renderizarTudo() {
+        const transacoesFiltradas = dadosNuvem.filter(t => filtroUsuario === 'Ambos' || t.autor === filtroUsuario);
+        let totalReceitas = 0, totalFixas = 0, totalVariaveis = 0;
+        let totalCartao = 0, totalConta = 0, totalPix = 0;
+
+        const lista = document.getElementById('lista-transacoes');
+        lista.innerHTML = '';
+        document.getElementById('contagem-itens').innerText = `${transacoesFiltradas.length} itens`;
+
+        if (transacoesFiltradas.length === 0) {
+            lista.innerHTML = `<div class="text-center p-8 text-slate-400 text-xs font-semibold border-2 border-dashed border-slate-200/80 rounded-3xl">Nenhum lançamento no momento.</div>`;
+        }
+
+        transacoesFiltradas.forEach(t => {
+            const valor = parseFloat(t.valor) || 0;
+            const conta = t.conta || 'Cartão de Crédito';
+            if(t.tipo === 'receita') totalReceitas += valor;
+            else if(t.tipo === 'despesa_fixa') totalFixas += valor;
+            else totalVariaveis += valor;
+            
+            if(t.tipo !== 'receita') {
+                if(conta === 'Cartão de Crédito') totalCartao += valor;
+                else if(conta === 'Conta Corrente') totalConta += valor;
+                else totalPix += valor;
             }
 
-            await batch.commit();
-            showToast(`${contador} registro(s) apagado(s)!`, "fa-trash");
+            const badge = getCategoriaIcone(t.categoria || 'Outros');
+            const sinal = t.tipo === 'receita' ? '+' : '-';
+            const corValor = t.tipo === 'receita' ? 'text-emerald-500' : 'text-slate-800';
+
+            lista.innerHTML += `
+                <div onclick="abrirModalParaEditar('${t.id}')" class="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center justify-between transition-transform active:scale-[0.98] cursor-pointer hover:bg-slate-50">
+                    <div class="flex items-center gap-3.5">
+                        <div class="w-11 h-11 rounded-2xl flex items-center justify-center ${badge.cor} shrink-0">
+                            <i class="fa-solid ${badge.icon} text-lg"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-slate-700 text-sm leading-snug line-clamp-1">${t.descricao}</h4>
+                            <p class="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
+                                <span class="font-bold text-slate-500">${t.autor}</span> • ${t.conta.split(' ')[0]} • ${formatarDataInteligente(t.data)}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <p class="font-black ${corValor} text-base tracking-tight">${sinal} ${formatarReal(valor)}</p>
+                    </div>
+                </div>
+            `;
+        });
+
+        document.getElementById('saldo-total').innerText = formatarReal(totalReceitas - (totalFixas + totalVariaveis));
+        document.getElementById('total-receitas').innerText = formatarReal(totalReceitas);
+        document.getElementById('total-fixas').innerText = formatarReal(totalFixas);
+        document.getElementById('total-variaveis').innerText = formatarReal(totalVariaveis);
+
+        document.getElementById('card-total-cartao').innerText = formatarReal(totalCartao);
+        document.getElementById('card-total-conta').innerText = formatarReal(totalConta);
+        document.getElementById('card-total-pix').innerText = formatarReal(totalPix);
+
+        renderizarAbaContasDetalhada();
+        renderizarRelatorios();
+    }
+
+    function renderizarAbaContasDetalhada() {
+        const transacoesDaConta = dadosNuvem.filter(t => 
+            (filtroUsuario === 'Ambos' || t.autor === filtroUsuario) && 
+            (t.conta === contaAtivaDetalhe) && (t.tipo !== 'receita')
+        );
+
+        let totalGastoConta = 0;
+        let gastosPorCategoria = {};
+
+        transacoesDaConta.forEach(t => {
+            const v = parseFloat(t.valor) || 0;
+            totalGastoConta += v;
+            const cat = t.categoria || 'Outros';
+            gastosPorCategoria[cat] = (gastosPorCategoria[cat] || 0) + v;
+        });
+
+        const cardHeader = document.getElementById('card-header-conta');
+        document.getElementById('valor-resumo-conta').innerText = formatarReal(totalGastoConta);
+
+        if (contaAtivaDetalhe === 'Cartão de Crédito') {
+            cardHeader.className = "bg-gradient-to-br from-sky-500 to-sky-600 text-white p-6 rounded-[2rem] shadow-lg shadow-sky-200 mb-5 relative overflow-hidden";
+            document.getElementById('titulo-resumo-conta').innerText = "Fatura Aberta do Cartão";
+            document.getElementById('icone-resumo-conta').innerHTML = `<i class="fa-solid fa-credit-card text-2xl"></i>`;
+        } else if (contaAtivaDetalhe === 'Conta Corrente') {
+            cardHeader.className = "bg-gradient-to-br from-indigo-500 to-indigo-600 text-white p-6 rounded-[2rem] shadow-lg shadow-indigo-200 mb-5 relative overflow-hidden";
+            document.getElementById('titulo-resumo-conta').innerText = "Débitos em Conta Corrente";
+            document.getElementById('icone-resumo-conta').innerHTML = `<i class="fa-solid fa-building-columns text-2xl"></i>`;
+        } else {
+            cardHeader.className = "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white p-6 rounded-[2rem] shadow-lg shadow-emerald-200 mb-5 relative overflow-hidden";
+            document.getElementById('titulo-resumo-conta').innerText = "Gastos em Pix e Dinheiro";
+            document.getElementById('icone-resumo-conta').innerHTML = `<i class="fa-solid fa-money-bill-wave text-2xl"></i>`;
+        }
+
+        const containerCat = document.getElementById('categorias-conta-selecionada');
+        containerCat.innerHTML = '';
+        const chavesCats = Object.keys(gastosPorCategoria).sort((a,b) => gastosPorCategoria[b] - gastosPorCategoria[a]);
+
+        chavesCats.forEach(cat => {
+            const valorCat = gastosPorCategoria[cat];
+            const perc = totalGastoConta > 0 ? ((valorCat / totalGastoConta) * 100).toFixed(0) : 0;
+            const iconeInfo = getCategoriaIcone(cat);
+            containerCat.innerHTML += `
+                <div>
+                    <div class="flex justify-between items-center mb-1.5">
+                        <span class="font-bold text-slate-600 text-xs flex items-center gap-2"><i class="fa-solid ${iconeInfo.icon} text-slate-400 w-4 text-center"></i> ${cat}</span>
+                        <span class="font-black text-slate-700 text-xs">${formatarReal(valorCat)} <span class="text-slate-300 font-bold ml-1">(${perc}%)</span></span>
+                    </div>
+                    <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden"><div class="bg-sky-400 h-2 rounded-full transition-all" style="width: ${perc}%"></div></div>
+                </div>`;
+        });
+
+        const listaConta = document.getElementById('lista-transacoes-conta-selecionada');
+        listaConta.innerHTML = '';
+        document.getElementById('contagem-conta-selecionada').innerText = `${transacoesDaConta.length} itens`;
+
+        if (transacoesDaConta.length === 0) listaConta.innerHTML = `<div class="text-center p-8 text-slate-400 text-xs font-semibold border-2 border-dashed border-slate-200/80 rounded-3xl">Nenhuma despesa para exibir.</div>`;
+
+        transacoesDaConta.forEach(t => {
+            const v = parseFloat(t.valor) || 0;
+            const badge = getCategoriaIcone(t.categoria);
+            listaConta.innerHTML += `
+                <div class="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                    <div class="flex items-center gap-3.5 cursor-pointer flex-1" onclick="abrirModalParaEditar('${t.id}')">
+                        <div class="w-10 h-10 rounded-2xl flex items-center justify-center ${badge.cor} shrink-0">
+                            <i class="fa-solid ${badge.icon} text-base"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-slate-700 text-sm leading-snug line-clamp-1">${t.descricao}</h4>
+                            <p class="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
+                                <span class="font-bold text-slate-500">${t.autor}</span> • ${t.categoria} • ${formatarDataInteligente(t.data)}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0 flex flex-col items-end">
+                        <p class="font-black text-slate-800 text-base tracking-tight">- ${formatarReal(v)}</p>
+                        <button onclick="deletarTransacao('${t.id}')" class="text-[10px] uppercase font-bold text-slate-300 hover:text-red-500 mt-1 transition-colors bg-slate-50 hover:bg-red-50 px-2 py-0.5 rounded-full z-10">
+                            Apagar
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    function renderizarRelatorios() {
+        const inputMes = document.getElementById('filtro-mes-relatorio');
+        if (!inputMes) return;
+        if (!inputMes.value) {
+            const hoje = new Date();
+            inputMes.value = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+        }
+
+        const mesSelecionado = inputMes.value;
+        const doMes = dadosNuvem.filter(t => 
+            (filtroUsuario === 'Ambos' || t.autor === filtroUsuario) &&
+            (t.data || '').startsWith(mesSelecionado)
+        );
+
+        let receitas = 0, despesas = 0, parcelas = 0;
+        let gui = 0, sofia = 0;
+        let cats = {};
+
+        doMes.forEach(t => {
+            const v = parseFloat(t.valor) || 0;
+            if (t.tipo === 'receita') {
+                receitas += v;
+            } else {
+                despesas += v;
+                if (/\(\d+\/\d+\)/.test(t.descricao || '')) parcelas += v;
+                if (t.autor === 'Sofia') sofia += v; else gui += v;
+                const c = t.categoria || 'Outros';
+                cats[c] = (cats[c] || 0) + v;
+            }
+        });
+
+        document.getElementById('rel-receitas-mes').innerText = formatarReal(receitas);
+        document.getElementById('rel-despesas-mes').innerText = formatarReal(despesas);
+
+        const taxa = receitas > 0 ? Math.max(0, (((receitas - despesas) / receitas) * 100)).toFixed(0) : 0;
+        document.getElementById('rel-taxa-poupanca').innerText = `${taxa}%`;
+        document.getElementById('rel-total-parcelas').innerText = formatarReal(parcelas);
+
+        const percGui = despesas > 0 ? ((gui / despesas) * 100).toFixed(0) : 0;
+        const percSofia = despesas > 0 ? ((sofia / despesas) * 100).toFixed(0) : 0;
+
+        document.getElementById('rel-comparativo-casal').innerHTML = `
+            <div class="flex justify-between text-xs font-bold text-slate-700">
+                <span>Guilherme (${percGui}%)</span><span>${formatarReal(gui)}</span>
+            </div>
+            <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden"><div class="bg-sky-500 h-2 transition-all" style="width:${percGui}%"></div></div>
+            <div class="flex justify-between text-xs font-bold text-slate-700 pt-1">
+                <span>Sofia (${percSofia}%)</span><span>${formatarReal(sofia)}</span>
+            </div>
+            <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden"><div class="bg-indigo-500 h-2 transition-all" style="width:${percSofia}%"></div></div>
+        `;
+
+        const rankEl = document.getElementById('rel-ranking-categorias');
+        rankEl.innerHTML = '';
+        const ordenadas = Object.keys(cats).sort((a, b) => cats[b] - cats[a]);
+        if (ordenadas.length === 0) {
+            rankEl.innerHTML = `<p class="text-xs text-slate-400">Sem despesas registradas neste mês.</p>`;
+            return;
+        }
+        ordenadas.forEach(c => {
+            const p = despesas > 0 ? ((cats[c] / despesas) * 100).toFixed(0) : 0;
+            const iconeInfo = getCategoriaIcone(c);
+            rankEl.innerHTML += `
+                <div>
+                    <div class="flex justify-between items-center text-xs mb-1">
+                        <span class="font-bold text-slate-600 flex items-center gap-2"><i class="fa-solid ${iconeInfo.icon} text-slate-400 w-4 text-center"></i> ${c}</span>
+                        <span class="font-black text-slate-800">${formatarReal(cats[c])} <span class="text-slate-400 font-normal">(${p}%)</span></span>
+                    </div>
+                    <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div class="bg-sky-400 h-1.5" style="width:${p}%"></div></div>
+                </div>
+            `;
+        });
+    }
+
+    async function salvarOuEditarTransacao(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btn-submit');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Gravando...`;
+
+        const idEdicao = document.getElementById('edit-id').value;
+        const descBase = document.getElementById('desc').value;
+        const valorTotal = parseFloat(document.getElementById('valor').value) || 0;
+        const tipo = document.getElementById('tipo').value;
+        const conta = document.getElementById('conta').value;
+        const categoria = document.getElementById('categoria').value;
+        const autor = document.getElementById('autor').value;
+        const qtdParcelas = parseInt(document.getElementById('parcelas')?.value || '1');
+
+        try {
+            if (idEdicao) {
+                await db.collection("transacoes").doc(idEdicao).update({
+                    descricao: descBase, valor: valorTotal, tipo, conta, categoria, autor
+                });
+                showToast("Alteração guardada com sucesso!");
+            } else if (qtdParcelas > 1 && tipo !== 'receita') {
+                const batch = db.batch();
+                const baseParcela = Math.floor((valorTotal / qtdParcelas) * 100) / 100;
+                const diferencaCentavos = parseFloat((valorTotal - baseParcela * qtdParcelas).toFixed(2));
+                const dataBase = new Date();
+
+                for (let i = 0; i < qtdParcelas; i++) {
+                    const dataParcela = new Date(dataBase.getFullYear(), dataBase.getMonth() + i, dataBase.getDate(), 12, 0, 0);
+                    const valorParcelaAtual = i === 0 ? parseFloat((baseParcela + diferencaCentavos).toFixed(2)) : baseParcela;
+                    const docRef = db.collection("transacoes").doc();
+                    batch.set(docRef, {
+                        descricao: `${descBase} (${i + 1}/${qtdParcelas})`,
+                        valor: valorParcelaAtual,
+                        tipo,
+                        conta,
+                        categoria,
+                        autor,
+                        data: dataParcela.toISOString()
+                    });
+                }
+                await batch.commit();
+                showToast(`Compra parcelada em ${qtdParcelas}x lançada!`);
+                dispararNotificacaoNativa("Compra Parcelada!", `${descBase} em ${qtdParcelas}x de ${formatarReal(baseParcela)}`);
+            } else {
+                await db.collection("transacoes").add({
+                    descricao: descBase,
+                    valor: valorTotal,
+                    tipo,
+                    conta,
+                    categoria,
+                    autor,
+                    data: new Date().toISOString()
+                });
+                showToast("Novo lançamento registrado!");
+                dispararNotificacaoNativa("Gasto Registrado!", `${descBase}: ${formatarReal(valorTotal)}`);
+            }
+            fecharModal();
         } catch (error) {
-            console.error("Erro ao limpar:", error);
-            alert("Erro ao apagar registros. Verifique sua conexão.");
+            alert("Erro ao gravar. Verifique a conexão com o Firebase.");
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    }
+
+    window.deletarTransacao = async function(id) {
+        if(confirm("Deseja apagar este registro permanentemente?")) {
+            await db.collection("transacoes").doc(id).delete()
+                .then(() => showToast("Excluído!", "fa-trash"))
+                .catch(() => alert("Erro ao excluir."));
         }
     };
+
+    function processarArquivoExtrato(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const nome = file.name.toLowerCase();
+        const reader = new FileReader();
+
+        reader.onload = function(e) {
+            const conteudo = e.target.result;
+            itensParaImportar = [];
+            if (nome.endsWith('.ofx')) itensParaImportar = parseOFX(conteudo);
+            else if (nome.endsWith('.csv')) itensParaImportar = parseCSV(conteudo);
+            else {
+                alert("Por favor, selecione um arquivo .OFX ou .CSV.");
+                return;
+            }
+            if (itensParaImportar.length === 0) {
+                alert("Nenhuma transação encontrada no arquivo.");
+                return;
+            }
+            exibirPreviaImportacao();
+        };
+        reader.readAsText(file);
+    }
+
+    function parseOFX(text) {
+        const transacoes = [];
+        const regexBloco = /<STMTTRN>([\s\S]*?)(?:<\/STMTTRN>|(?=<STMTTRN>)|(?=<\/BANKTRANLIST>)|(?=<\/CCSTMTTRN>)|$)/gi;
+        let match;
+
+        while ((match = regexBloco.exec(text)) !== null) {
+            const bloco = match[1];
+            const getTag = (tag) => {
+                const r = new RegExp(`<${tag}>([^<\\r\\n]+)`, 'i');
+                const m = bloco.match(r);
+                return m ? m[1].trim() : '';
+            };
+
+            const valorNum = parseFloat(getTag('TRNAMT').replace(',', '.'));
+            const dtposted = getTag('DTPOSTED');
+            const memo = getTag('MEMO') || getTag('NAME') || 'Compra no Cartão';
+
+            if (!isNaN(valorNum) && valorNum !== 0) {
+                let dataFormatada = new Date().toISOString();
+                if (dtposted && dtposted.length >= 8) {
+                    const y = dtposted.substring(0, 4);
+                    const m = dtposted.substring(4, 6);
+                    const d = dtposted.substring(6, 8);
+                    dataFormatada = new Date(`${y}-${m}-${d}T12:00:00Z`).toISOString();
+                }
+
+                transacoes.push({
+                    descricao: memo,
+                    valor: Math.abs(valorNum),
+                    tipo: valorNum < 0 ? 'despesa_variavel' : 'receita',
+                    categoria: detectarCategoriaAutomatica(memo),
+                    data: dataFormatada
+                });
+            }
+        }
+        return transacoes;
+    }
+
+    function parseCSV(text) {
+        const linhas = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+        if (linhas.length < 2) return [];
+
+        const delim = linhas[0].includes(';') ? ';' : ',';
+        const cabecalho = linhas[0].split(delim).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+        const idxValor = cabecalho.findIndex(h => h.includes('amount') || h.includes('valor'));
+        const idxTitulo = cabecalho.findIndex(h => h.includes('title') || h.includes('descri') || h.includes('identificador'));
+
+        const transacoes = [];
+        for (let i = 1; i < linhas.length; i++) {
+            const cols = linhas[i].split(delim).map(c => c.trim().replace(/^["']|["']$/g, ''));
+            if (cols.length < 2) continue;
+
+            const desc = idxTitulo !== -1 ? cols[idxTitulo] : cols[1];
+            const valorNum = parseFloat((cols[idxValor] || '').replace('R$', '').replace(/\s/g, '').replace(',', '.'));
+            if (isNaN(valorNum) || valorNum === 0) continue;
+
+            transacoes.push({
+                descricao: desc || 'Compra',
+                valor: Math.abs(valorNum),
+                tipo: 'despesa_variavel',
+                categoria: detectarCategoriaAutomatica(desc),
+                data: new Date().toISOString()
+            });
+        }
+        return transacoes;
+    }
+
+    function exibirPreviaImportacao() {
+        document.getElementById('step-upload').classList.add('hide');
+        document.getElementById('step-preview').classList.remove('hide');
+
+        let totalSoma = 0;
+        const listaPreview = document.getElementById('preview-lista-itens');
+        listaPreview.innerHTML = '';
+
+        itensParaImportar.forEach(item => {
+            totalSoma += item.valor;
+            const badge = getCategoriaIcone(item.categoria);
+            listaPreview.innerHTML += `
+                <div class="bg-white p-2.5 rounded-xl border border-slate-200/70 flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid ${badge.icon} text-slate-400 w-4 text-center"></i>
+                        <div>
+                            <p class="font-bold text-slate-700 leading-tight">${item.descricao}</p>
+                            <p class="text-[10px] text-slate-400">${item.categoria}</p>
+                        </div>
+                    </div>
+                    <span class="font-black text-slate-800">${formatarReal(item.valor)}</span>
+                </div>
+            `;
+        });
+
+        document.getElementById('preview-total-itens').innerText = `${itensParaImportar.length} transações`;
+        document.getElementById('preview-total-valor').innerText = formatarReal(totalSoma);
+    }
 
     async function confirmarImportacao() {
         const btn = document.getElementById('btn-confirmar-import');
@@ -56,24 +1687,8 @@ window.limparRegistros = async function(modo) {
         try {
             let batch = db.batch();
             let contador = 0;
-            let duplicados = 0;
 
             for (const item of itensParaImportar) {
-                const dataItemDia = (item.data || '').slice(0, 10);
-                const descItemNorm = (item.descricao || '').trim().toLowerCase();
-
-                const jaExiste = dadosNuvem.some(existente => {
-                    const dataExDia = (existente.data || '').slice(0, 10);
-                    const descExNorm = (existente.descricao || '').trim().toLowerCase();
-                    const mesmoValor = Math.abs((parseFloat(existente.valor) || 0) - item.valor) < 0.01;
-                    return existente.conta === contaDestino && dataExDia === dataItemDia && descExNorm === descItemNorm && mesmoValor;
-                });
-
-                if (jaExiste) {
-                    duplicados++;
-                    continue;
-                }
-
                 const docRef = db.collection("transacoes").doc();
                 batch.set(docRef, {
                     descricao: item.descricao,
@@ -92,16 +1707,9 @@ window.limparRegistros = async function(modo) {
                 }
             }
 
-            if (contador > 0) {
-                await batch.commit();
-            }
-
+            await batch.commit();
             fecharModalImportacao();
-            if (duplicados > 0) {
-                showToast(`${contador} novos importados (${duplicados} duplicados ignorados)!`);
-            } else {
-                showToast(`${contador} gastos importados com sucesso!`);
-            }
+            showToast(`${contador} gastos importados com sucesso!`);
             abrirContaEspecifica(contaDestino);
         } catch (error) {
             alert("Erro ao gravar dados na nuvem.");
@@ -110,3 +1718,102 @@ window.limparRegistros = async function(modo) {
             btn.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Gravar Tudo`;
         }
     }
+
+    window.exportarBackupJSON = function() {
+        if (dadosNuvem.length === 0) {
+            alert("Não há dados cadastrados para exportar.");
+            return;
+        }
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dadosNuvem, null, 2));
+        const downloadAnchor = document.createElement('a');
+        const dataHoje = new Date().toISOString().split('T')[0];
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", `backup-financas-casal-${dataHoje}.json`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+        showToast("Backup JSON baixado com sucesso!");
+    };
+
+    window.exportarPlanilhaCSV = function() {
+        if (dadosNuvem.length === 0) {
+            alert("Não há dados para exportar.");
+            return;
+        }
+        let csvContent = "data:text/csv;charset=utf-8,Data;Descricao;Valor;Tipo;Conta;Categoria;Autor\n";
+        dadosNuvem.forEach(t => {
+            const linha = [
+                new Date(t.data).toLocaleDateString('pt-BR'),
+                `"${(t.descricao || '').replace(/"/g, '""')}"`,
+                (t.valor || 0).toString().replace('.', ','),
+                t.tipo,
+                t.conta,
+                t.categoria,
+                t.autor
+            ].join(";");
+            csvContent += linha + "\n";
+        });
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        const dataHoje = new Date().toISOString().split('T')[0];
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `financas-casal-${dataHoje}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        showToast("Planilha CSV baixada!");
+    };
+
+    window.restaurarBackupJSON = function(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            try {
+                const itensRestaurados = JSON.parse(e.target.result);
+                if (!Array.isArray(itensRestaurados)) throw new Error("Formato inválido.");
+                if (!confirm(`Restaurar ${itensRestaurados.length} lançamentos para a nuvem?`)) {
+                    event.target.value = '';
+                    return;
+                }
+                showToast("Restaurando registros...", "fa-spinner fa-spin");
+                let batch = db.batch();
+                let contador = 0;
+                for (const item of itensRestaurados) {
+                    const docId = item.id || db.collection("transacoes").doc().id;
+                    const docRef = db.collection("transacoes").doc(docId);
+                    batch.set(docRef, {
+                        descricao: item.descricao || "Sem descrição",
+                        valor: parseFloat(item.valor) || 0,
+                        tipo: item.tipo || "despesa_variavel",
+                        conta: item.conta || "Cartão de Crédito",
+                        categoria: item.categoria || "Outros",
+                        autor: item.autor || "Guilherme",
+                        data: item.data || new Date().toISOString()
+                    });
+                    contador++;
+                    if (contador % 450 === 0) {
+                        await batch.commit();
+                        batch = db.batch();
+                    }
+                }
+                await batch.commit();
+                showToast("Todos os dados foram restaurados!");
+                mudarAba('inicio');
+            } catch (err) {
+                alert("Falha ao ler o backup. Certifique-se de que é um arquivo .json válido.");
+            } finally {
+                event.target.value = '';
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    window.addEventListener('DOMContentLoaded', () => {
+        carregarChaveGemini();
+        carregarWhatsApp();
+        atualizarStatusNotificacoesUI();
+    });
+</script>
+</body>
+</html>
