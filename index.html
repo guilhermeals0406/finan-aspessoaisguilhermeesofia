@@ -1,0 +1,112 @@
+window.limparRegistros = async function(modo) {
+        let alvo = [];
+        let mensagemConfirmacao = "";
+
+        if (modo === 'conta') {
+            const contaAlvo = document.getElementById('select-limpar-conta').value;
+            alvo = dadosNuvem.filter(t => t.conta === contaAlvo && t.tipo !== 'receita');
+            mensagemConfirmacao = `Apagar permanentemente ${alvo.length} despesa(s) de "${contaAlvo}"?`;
+        } else if (modo === 'despesas') {
+            alvo = dadosNuvem.filter(t => t.tipo !== 'receita');
+            mensagemConfirmacao = `Apagar todas as ${alvo.length} despesas (mantendo apenas as receitas)?`;
+        } else if (modo === 'tudo') {
+            alvo = [...dadosNuvem];
+            mensagemConfirmacao = `ATENÇÃO: Isso vai apagar TODOS os ${alvo.length} registros (despesas e receitas). Deseja continuar?`;
+        }
+
+        if (alvo.length === 0) {
+            alert("Não há registros nessa opção para apagar.");
+            return;
+        }
+
+        if (!confirm(mensagemConfirmacao)) return;
+
+        showToast("Limpando registros...", "fa-spinner fa-spin");
+
+        try {
+            let batch = db.batch();
+            let contador = 0;
+
+            for (const item of alvo) {
+                const docRef = db.collection("transacoes").doc(item.id);
+                batch.delete(docRef);
+                contador++;
+                if (contador % 450 === 0) {
+                    await batch.commit();
+                    batch = db.batch();
+                }
+            }
+
+            await batch.commit();
+            showToast(`${contador} registro(s) apagado(s)!`, "fa-trash");
+        } catch (error) {
+            console.error("Erro ao limpar:", error);
+            alert("Erro ao apagar registros. Verifique sua conexão.");
+        }
+    };
+
+    async function confirmarImportacao() {
+        const btn = document.getElementById('btn-confirmar-import');
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Gravando...`;
+
+        const contaDestino = document.getElementById('import-conta').value;
+        const autorDestino = document.getElementById('import-autor').value;
+
+        try {
+            let batch = db.batch();
+            let contador = 0;
+            let duplicados = 0;
+
+            for (const item of itensParaImportar) {
+                const dataItemDia = (item.data || '').slice(0, 10);
+                const descItemNorm = (item.descricao || '').trim().toLowerCase();
+
+                const jaExiste = dadosNuvem.some(existente => {
+                    const dataExDia = (existente.data || '').slice(0, 10);
+                    const descExNorm = (existente.descricao || '').trim().toLowerCase();
+                    const mesmoValor = Math.abs((parseFloat(existente.valor) || 0) - item.valor) < 0.01;
+                    return existente.conta === contaDestino && dataExDia === dataItemDia && descExNorm === descItemNorm && mesmoValor;
+                });
+
+                if (jaExiste) {
+                    duplicados++;
+                    continue;
+                }
+
+                const docRef = db.collection("transacoes").doc();
+                batch.set(docRef, {
+                    descricao: item.descricao,
+                    valor: item.valor,
+                    tipo: item.tipo,
+                    conta: contaDestino,
+                    categoria: item.categoria,
+                    autor: autorDestino,
+                    data: item.data
+                });
+
+                contador++;
+                if (contador % 450 === 0) {
+                    await batch.commit();
+                    batch = db.batch();
+                }
+            }
+
+            if (contador > 0) {
+                await batch.commit();
+            }
+
+            fecharModalImportacao();
+            if (duplicados > 0) {
+                showToast(`${contador} novos importados (${duplicados} duplicados ignorados)!`);
+            } else {
+                showToast(`${contador} gastos importados com sucesso!`);
+            }
+            abrirContaEspecifica(contaDestino);
+        } catch (error) {
+            alert("Erro ao gravar dados na nuvem.");
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Gravar Tudo`;
+        }
+    }
