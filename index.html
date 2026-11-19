@@ -302,7 +302,7 @@
 <!-- ABA 5: AJUSTES -->
 <main class="px-5 pt-3 max-w-lg mx-auto hide fade-in" id="aba-ajustes">
     <h2 class="text-2xl font-black text-slate-700 mb-1">Ajustes & Sistema</h2>
-    <p class="text-xs text-slate-400 mb-5">WhatsApp, chave Google Gemini, notificações e backup.</p>
+    <p class="text-xs text-slate-400 mb-5">WhatsApp, chave Google Gemini, notificações, limpeza e backup.</p>
 
     <!-- WhatsApp para Relatórios -->
     <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm mb-5">
@@ -401,6 +401,40 @@
                 </label>
                 <input type="file" id="input-backup" accept=".json" class="hide" onchange="restaurarBackupJSON(event)">
             </div>
+        </div>
+    </div>
+
+    <!-- Limpar Despesas -->
+    <div class="bg-white p-5 rounded-3xl border border-rose-100 shadow-sm mb-5">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="bg-rose-50 text-rose-600 w-12 h-12 rounded-2xl flex items-center justify-center text-xl">
+                <i class="fa-solid fa-trash-can"></i>
+            </div>
+            <div>
+                <h3 class="font-black text-slate-800 text-base">Limpar Despesas</h3>
+                <p class="text-xs text-slate-400">Apague lançamentos antes de reimportar extratos.</p>
+            </div>
+        </div>
+
+        <div class="space-y-2.5">
+            <div class="flex gap-2">
+                <select id="select-limpar-conta" class="w-2/3 bg-slate-50 border border-slate-200/80 rounded-2xl px-3 py-3 font-semibold text-xs text-slate-700 outline-none">
+                    <option value="Cartão de Crédito">💳 Cartão de Crédito</option>
+                    <option value="Conta Corrente">🏦 Conta Corrente / Débito</option>
+                    <option value="Pix / Dinheiro">⚡ Pix / Dinheiro</option>
+                </select>
+                <button onclick="limparRegistros('conta')" class="w-1/3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-2xl text-xs active:scale-95 transition-all">
+                    Limpar Conta
+                </button>
+            </div>
+
+            <button onclick="limparRegistros('despesas')" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold p-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 active:scale-95 transition-all shadow-sm">
+                <i class="fa-solid fa-broom"></i> Apagar Todas as Despesas (Manter Receitas)
+            </button>
+
+            <button onclick="limparRegistros('tudo')" class="w-full bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 font-bold p-3 rounded-2xl text-xs flex items-center justify-center gap-2 active:scale-95 transition-all">
+                <i class="fa-solid fa-triangle-exclamation"></i> Zerar Banco de Dados Completo
+            </button>
         </div>
     </div>
 </main>
@@ -1676,6 +1710,53 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
         document.getElementById('preview-total-valor').innerText = formatarReal(totalSoma);
     }
 
+    window.limparRegistros = async function(modo) {
+        let alvo = [];
+        let mensagemConfirmacao = "";
+
+        if (modo === 'conta') {
+            const contaAlvo = document.getElementById('select-limpar-conta').value;
+            alvo = dadosNuvem.filter(t => t.conta === contaAlvo && t.tipo !== 'receita');
+            mensagemConfirmacao = `Apagar permanentemente ${alvo.length} despesa(s) de "${contaAlvo}"?`;
+        } else if (modo === 'despesas') {
+            alvo = dadosNuvem.filter(t => t.tipo !== 'receita');
+            mensagemConfirmacao = `Apagar todas as ${alvo.length} despesas (mantendo apenas as receitas)?`;
+        } else if (modo === 'tudo') {
+            alvo = [...dadosNuvem];
+            mensagemConfirmacao = `ATENÇÃO: Isso vai apagar TODOS os ${alvo.length} registros (despesas e receitas). Deseja continuar?`;
+        }
+
+        if (alvo.length === 0) {
+            alert("Não há registros nessa opção para apagar.");
+            return;
+        }
+
+        if (!confirm(mensagemConfirmacao)) return;
+
+        showToast("Limpando registros...", "fa-spinner fa-spin");
+
+        try {
+            let batch = db.batch();
+            let contador = 0;
+
+            for (const item of alvo) {
+                const docRef = db.collection("transacoes").doc(item.id);
+                batch.delete(docRef);
+                contador++;
+                if (contador % 450 === 0) {
+                    await batch.commit();
+                    batch = db.batch();
+                }
+            }
+
+            await batch.commit();
+            showToast(`${contador} registro(s) apagado(s)!`, "fa-trash");
+        } catch (error) {
+            console.error("Erro ao limpar:", error);
+            alert("Erro ao apagar registros. Verifique sua conexão.");
+        }
+    };
+
     async function confirmarImportacao() {
         const btn = document.getElementById('btn-confirmar-import');
         btn.disabled = true;
@@ -1687,8 +1768,24 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
         try {
             let batch = db.batch();
             let contador = 0;
+            let duplicados = 0;
 
             for (const item of itensParaImportar) {
+                const dataItemDia = (item.data || '').slice(0, 10);
+                const descItemNorm = (item.descricao || '').trim().toLowerCase();
+
+                const jaExiste = dadosNuvem.some(existente => {
+                    const dataExDia = (existente.data || '').slice(0, 10);
+                    const descExNorm = (existente.descricao || '').trim().toLowerCase();
+                    const mesmoValor = Math.abs((parseFloat(existente.valor) || 0) - item.valor) < 0.01;
+                    return existente.conta === contaDestino && dataExDia === dataItemDia && descExNorm === descItemNorm && mesmoValor;
+                });
+
+                if (jaExiste) {
+                    duplicados++;
+                    continue;
+                }
+
                 const docRef = db.collection("transacoes").doc();
                 batch.set(docRef, {
                     descricao: item.descricao,
@@ -1707,9 +1804,16 @@ Escreva uma análise objetiva, curta e prática em 4 tópicos:
                 }
             }
 
-            await batch.commit();
+            if (contador > 0) {
+                await batch.commit();
+            }
+
             fecharModalImportacao();
-            showToast(`${contador} gastos importados com sucesso!`);
+            if (duplicados > 0) {
+                showToast(`${contador} novos importados (${duplicados} duplicados ignorados)!`);
+            } else {
+                showToast(`${contador} gastos importados com sucesso!`);
+            }
             abrirContaEspecifica(contaDestino);
         } catch (error) {
             alert("Erro ao gravar dados na nuvem.");
